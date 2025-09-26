@@ -1,9 +1,3 @@
-# Transfer System
-
-A Spring Boot application for transfer system management.
-
-## Project Structure
-
 # 🏛️ ALMUKHTAR ELITE MONEY TRANSFER SYSTEM
 
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
@@ -57,8 +51,8 @@ A Spring Boot application for transfer system management.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/tito-6/ALMUKHTAR-ELITE-MONEY-TRANSFER.git
-   cd ALMUKHTAR-ELITE-MONEY-TRANSFER
+   git clone https://github.com/tito-6/ALMUKHTAR.git
+   cd ALMUKHTAR
    ```
 
 2. **Run the application**
@@ -167,36 +161,3 @@ Content-Type: application/json
 ---
 
 **© 2025 ALMUKHTAR Elite Money Transfer System. Built with ❤️ for secure financial transactions.**
-
-## Requirements
-
-- Java 25
-- Maven 3.6+
-- PostgreSQL (optional, for production)
-
-## Running the Application
-
-### Local Development
-```bash
-mvn spring-boot:run
-```
-
-### With Docker Compose (includes PostgreSQL)
-```bash
-docker-compose up --build
-```
-
-## Configuration
-
-Database configuration is commented out in `application.properties`. 
-Uncomment and modify as needed for your PostgreSQL setup.
-
-## Access
-
-- Application: http://localhost:8080
-- Default security is disabled for development
-
-## Docker
-
-- `Dockerfile` - For building the application image
-- `docker-compose.yml` - For running with PostgreSQL database
