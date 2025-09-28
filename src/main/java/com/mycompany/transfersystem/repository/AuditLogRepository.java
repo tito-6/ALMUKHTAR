@@ -25,4 +25,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     @Query("SELECT a FROM AuditLog a WHERE a.createdAt BETWEEN :startDate AND :endDate")
     List<AuditLog> findByDateRange(@Param("startDate") LocalDateTime startDate, 
                                  @Param("endDate") LocalDateTime endDate);
+    
+    @Query("SELECT a FROM AuditLog a WHERE a.action LIKE %:action%")
+    List<AuditLog> findByActionContainingIgnoreCase(@Param("action") String action);
 }

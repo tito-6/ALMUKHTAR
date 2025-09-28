@@ -25,4 +25,17 @@ public class TransferRequest {
     @NotNull(message = "Amount is required")
     @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
     private BigDecimal amount;
+
+    // Manual getters and setters for Lombok compatibility
+    public Long getSenderId() { return senderId; }
+    public void setSenderId(Long senderId) { this.senderId = senderId; }
+    
+    public Long getReceiverId() { return receiverId; }
+    public void setReceiverId(Long receiverId) { this.receiverId = receiverId; }
+    
+    public Long getFundId() { return fundId; }
+    public void setFundId(Long fundId) { this.fundId = fundId; }
+    
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
 }

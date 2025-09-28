@@ -10,12 +10,15 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
     List<Transaction> findBySender(User sender);
     List<Transaction> findByReceiver(User receiver);
     List<Transaction> findByStatus(TransactionStatus status);
+    Page<Transaction> findByStatus(TransactionStatus status, Pageable pageable);
     
     @Query("SELECT t FROM Transaction t WHERE t.sender = :user OR t.receiver = :user")
     List<Transaction> findByUser(@Param("user") User user);
@@ -23,4 +26,15 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     @Query("SELECT t FROM Transaction t WHERE t.createdAt BETWEEN :startDate AND :endDate")
     List<Transaction> findByDateRange(@Param("startDate") LocalDateTime startDate, 
                                     @Param("endDate") LocalDateTime endDate);
+    
+    @Query("SELECT t FROM Transaction t WHERE t.createdAt BETWEEN :startDate AND :endDate")
+    Page<Transaction> findByCreatedAtBetween(@Param("startDate") LocalDateTime startDate, 
+                                           @Param("endDate") LocalDateTime endDate, 
+                                           Pageable pageable);
+    
+    @Query("SELECT t FROM Transaction t WHERE t.createdAt > :startDate")
+    List<Transaction> findByCreatedAtAfter(@Param("startDate") LocalDateTime startDate);
+    
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.createdAt > :startDate")
+    long countByCreatedAtAfter(@Param("startDate") LocalDateTime startDate);
 }

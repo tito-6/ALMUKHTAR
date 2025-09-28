@@ -18,4 +18,6 @@ public class FundResponse {
     private FundStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+
 }

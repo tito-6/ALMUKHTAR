@@ -25,4 +25,17 @@ public class UserRequest {
     private UserRole role;
     
     private Long fundId; // Optional - associates user with a specific fund
+
+    // Manual getters and setters for Lombok compatibility
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
+    
+    public UserRole getRole() { return role; }
+    public void setRole(UserRole role) { this.role = role; }
+    
+    public Long getFundId() { return fundId; }
+    public void setFundId(Long fundId) { this.fundId = fundId; }
 }

@@ -1,11 +1,8 @@
 package com.mycompany.transfersystem.config;
 
-import com.mycompany.transfersystem.entity.Fund;
-import com.mycompany.transfersystem.entity.User;
-import com.mycompany.transfersystem.entity.enums.FundStatus;
-import com.mycompany.transfersystem.entity.enums.UserRole;
-import com.mycompany.transfersystem.repository.FundRepository;
-import com.mycompany.transfersystem.repository.UserRepository;
+import com.mycompany.transfersystem.entity.*;
+import com.mycompany.transfersystem.entity.enums.*;
+import com.mycompany.transfersystem.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,10 +20,34 @@ public class DataInitializer implements CommandLineRunner {
     private FundRepository fundRepository;
 
     @Autowired
+    private BranchRepository branchRepository;
+
+    @Autowired
+    private CommissionRateRepository commissionRateRepository;
+
+    @Autowired
+    private CurrencyRepository currencyRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) throws Exception {
+        // Create currencies if they don't exist
+        if (currencyRepository.count() == 0) {
+            createSampleCurrencies();
+        }
+
+        // Create branches if they don't exist
+        if (branchRepository.count() == 0) {
+            createSampleBranches();
+        }
+
+        // Create commission rates if they don't exist
+        if (commissionRateRepository.count() == 0) {
+            createSampleCommissionRates();
+        }
+
         // Create sample users if they don't exist
         if (userRepository.count() == 0) {
             createSampleUsers();
@@ -100,5 +121,87 @@ public class DataInitializer implements CommandLineRunner {
         System.out.println("- General Fund ($100,000 - ACTIVE)");
         System.out.println("- Emergency Fund ($50,000 - ACTIVE)");
         System.out.println("- Inactive Fund ($25,000 - INACTIVE)");
+    }
+
+    private void createSampleCurrencies() {
+        // USD
+        Currency usd = new Currency("USD", "US Dollar", BigDecimal.ONE, "$", false, "DEFAULT");
+        currencyRepository.save(usd);
+
+        // EUR
+        Currency eur = new Currency("EUR", "Euro", new BigDecimal("1.08"), "€", false, "DEFAULT");
+        currencyRepository.save(eur);
+
+        // GBP
+        Currency gbp = new Currency("GBP", "British Pound", new BigDecimal("1.25"), "£", false, "DEFAULT");
+        currencyRepository.save(gbp);
+
+        // TL (Turkish Lira) - 1 USD = 30 TL
+        Currency tl = new Currency("TL", "Turkish Lira", new BigDecimal("0.033"), "₺", false, "DEFAULT");
+        currencyRepository.save(tl);
+
+        System.out.println("Sample currencies created:");
+        System.out.println("- USD (1.00)");
+        System.out.println("- EUR (1.08)");
+        System.out.println("- GBP (1.25)");
+        System.out.println("- TL (0.033)");
+    }
+
+    private void createSampleBranches() {
+        // Main Admin Branch
+        Branch mainAdminBranch = new Branch();
+        mainAdminBranch.setName("MAIN_ADMIN_BRANCH");
+        branchRepository.save(mainAdminBranch);
+
+        // Branch A
+        Branch branchA = new Branch();
+        branchA.setName("BRANCH_A");
+        branchRepository.save(branchA);
+
+        // Branch B
+        Branch branchB = new Branch();
+        branchB.setName("BRANCH_B");
+        branchRepository.save(branchB);
+
+        System.out.println("Sample branches created:");
+        System.out.println("- MAIN_ADMIN_BRANCH");
+        System.out.println("- BRANCH_A");
+        System.out.println("- BRANCH_B");
+    }
+
+    private void createSampleCommissionRates() {
+        // Get branches
+        Branch mainAdminBranch = branchRepository.findFirstByName("MAIN_ADMIN_BRANCH").orElseThrow();
+        Branch branchA = branchRepository.findFirstByName("BRANCH_A").orElseThrow();
+        Branch branchB = branchRepository.findFirstByName("BRANCH_B").orElseThrow();
+
+        // Platform Fees - linked to MAIN_ADMIN_BRANCH
+        CommissionRate platformBaseFee = new CommissionRate(mainAdminBranch, CommissionScope.PLATFORM_BASE_FEE, new BigDecimal("1.50"));
+        commissionRateRepository.save(platformBaseFee);
+
+        CommissionRate platformExchangeProfit = new CommissionRate(mainAdminBranch, CommissionScope.PLATFORM_EXCHANGE_PROFIT, new BigDecimal("1.50"));
+        commissionRateRepository.save(platformExchangeProfit);
+
+        // Branch A Fees
+        CommissionRate branchASendingFee = new CommissionRate(branchA, CommissionScope.SENDING_BRANCH_FEE, new BigDecimal("1.50"));
+        commissionRateRepository.save(branchASendingFee);
+
+        CommissionRate branchAReceivingFee = new CommissionRate(branchA, CommissionScope.RECEIVING_BRANCH_FEE, new BigDecimal("4.00"));
+        commissionRateRepository.save(branchAReceivingFee);
+
+        // Branch B Fees
+        CommissionRate branchBSendingFee = new CommissionRate(branchB, CommissionScope.SENDING_BRANCH_FEE, new BigDecimal("1.50"));
+        commissionRateRepository.save(branchBSendingFee);
+
+        CommissionRate branchBReceivingFee = new CommissionRate(branchB, CommissionScope.RECEIVING_BRANCH_FEE, new BigDecimal("4.00"));
+        commissionRateRepository.save(branchBReceivingFee);
+
+        System.out.println("Sample commission rates created:");
+        System.out.println("- Platform Base Fee: $1.50/1000 USD (MAIN_ADMIN_BRANCH)");
+        System.out.println("- Platform Exchange Profit: $1.50/1000 USD (MAIN_ADMIN_BRANCH)");
+        System.out.println("- Branch A Sending Fee: $1.50/1000 USD");
+        System.out.println("- Branch A Receiving Fee: $4.00/1000 USD");
+        System.out.println("- Branch B Sending Fee: $1.50/1000 USD");
+        System.out.println("- Branch B Receiving Fee: $4.00/1000 USD");
     }
 }

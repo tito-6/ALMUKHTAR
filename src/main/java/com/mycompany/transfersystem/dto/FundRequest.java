@@ -24,4 +24,14 @@ public class FundRequest {
     
     @NotNull(message = "Status is required")
     private FundStatus status;
+
+    // Manual getters and setters for Lombok compatibility
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    
+    public BigDecimal getBalance() { return balance; }
+    public void setBalance(BigDecimal balance) { this.balance = balance; }
+    
+    public FundStatus getStatus() { return status; }
+    public void setStatus(FundStatus status) { this.status = status; }
 }
