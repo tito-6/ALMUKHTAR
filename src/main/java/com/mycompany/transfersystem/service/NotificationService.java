@@ -1,8 +1,11 @@
 package com.mycompany.transfersystem.service;
 
+import com.mycompany.transfersystem.dto.QrGenerationResponse;
 import com.mycompany.transfersystem.entity.Branch;
+import com.mycompany.transfersystem.entity.Transaction;
 import com.mycompany.transfersystem.entity.User;
 import com.mycompany.transfersystem.repository.BranchRepository;
+import com.mycompany.transfersystem.service.notification.WhatsAppNotificationProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +16,9 @@ public class NotificationService {
 
     @Autowired
     private BranchRepository branchRepository;
+
+    @Autowired(required = false)
+    private WhatsAppNotificationProvider whatsAppProvider;
 
     /**
      * Send internal branch alert to a specific branch
@@ -77,5 +83,17 @@ public class NotificationService {
     public String generateReleasePasscode() {
         // Generate a 6-digit numeric passcode
         return String.format("%06d", (int) (Math.random() * 1000000));
+    }
+
+    public void notifyTransactionComplete(Transaction tx) {
+        if (whatsAppProvider != null && tx.getReceiver().getPhone() != null && !tx.getReceiver().getPhone().isBlank()) {
+            whatsAppProvider.sendTransactionReceipt(tx, tx.getReceiver().getPhone());
+        }
+    }
+
+    public void notifyQrReady(Transaction tx, QrGenerationResponse qrData) {
+        if (whatsAppProvider != null && tx.getReceiver().getPhone() != null && !tx.getReceiver().getPhone().isBlank()) {
+            whatsAppProvider.sendQrCode(tx.getReceiver().getPhone(), qrData, tx);
+        }
     }
 }

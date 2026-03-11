@@ -24,7 +24,7 @@ public class TransactionController {
     private ReleasePasscodeService releasePasscodeService;
 
     @GetMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('AUDITOR')")
     public ResponseEntity<List<TransactionResponse>> getAllTransactions() {
         List<TransactionResponse> transactions = transactionService.getAllTransactions();
         return ResponseEntity.ok(transactions);
@@ -37,9 +37,16 @@ public class TransactionController {
     }
 
     @PostMapping("/transfer")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<TransactionResponse> createTransfer(@Valid @RequestBody TransferRequest request) {
         TransactionResponse transaction = transactionService.createTransfer(request);
+        return new ResponseEntity<>(transaction, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/transfer-for-qr")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
+    public ResponseEntity<TransactionResponse> createTransferForQr(@Valid @RequestBody TransferRequest request) {
+        TransactionResponse transaction = transactionService.createTransferForQr(request);
         return new ResponseEntity<>(transaction, HttpStatus.CREATED);
     }
 
@@ -50,14 +57,14 @@ public class TransactionController {
     }
 
     @PostMapping("/transfer-comprehensive")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<TransactionRecordDTO> executeTransfer(@Valid @RequestBody TransferTransactionRequest request) {
         TransactionRecordDTO transaction = transactionService.executeTransfer(request);
         return new ResponseEntity<>(transaction, HttpStatus.CREATED);
     }
 
     @GetMapping("/{id}/record")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<TransactionRecordDTO> getTransactionRecord(@PathVariable Long id) {
         // In a real implementation, you would get the current user's branch ID from security context
         // For now, we'll pass null to show the passcode (admin view)
@@ -66,7 +73,7 @@ public class TransactionController {
     }
 
     @PostMapping("/{transactionId}/release")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER')")
     public ResponseEntity<String> releaseTransaction(@PathVariable Long transactionId, 
                                                    @Valid @RequestBody ReleaseRequest request) {
         try {

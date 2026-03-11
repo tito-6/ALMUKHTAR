@@ -78,8 +78,14 @@ public class FeeManagementService {
         UserRole userRole = user.getRole();
 
         switch (userRole) {
+            case PLATFORM_OWNER:
             case SUPER_ADMIN:
-                // SUPER_ADMIN can modify any fee for any branch
+                // Platform owner / legacy super admin can modify any fee for any branch
+                break;
+
+            case MOTHER_BRANCH_ADMIN:
+                // Mother branch admin can modify fees for their branch (same as branch manager)
+                validateBranchManagerAuthorization(user, branchId, scope);
                 break;
 
             case BRANCH_MANAGER:

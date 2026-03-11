@@ -26,7 +26,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/{fromCurrency}/{toCurrency}
      */
     @GetMapping("/{fromCurrency}/{toCurrency}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
     public ResponseEntity<Map<String, Object>> getExchangeRate(
             @PathVariable String fromCurrency,
             @PathVariable String toCurrency) {
@@ -53,7 +53,7 @@ public class ExchangeRateController {
      * POST /api/exchange-rates/convert
      */
     @PostMapping("/convert")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
     public ResponseEntity<Map<String, Object>> convertAmount(
             @RequestBody Map<String, Object> request) {
         
@@ -86,7 +86,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/quota
      */
     @GetMapping("/quota")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<String> getApiQuota() {
         String quotaInfo = exchangeRateService.getApiQuotaInfo();
         return ResponseEntity.ok(quotaInfo);
@@ -97,7 +97,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/currencies
      */
     @GetMapping("/currencies")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER') or hasRole('CASHIER') or hasRole('AUDITOR')")
     public ResponseEntity<String> getSupportedCurrencies() {
         String currencies = exchangeRateService.getSupportedCurrencies();
         return ResponseEntity.ok(currencies);
@@ -108,7 +108,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/health
      */
     @GetMapping("/health")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<Map<String, Object>> checkApiHealth() {
         Map<String, Object> response = new HashMap<>();
         response.put("apiAvailable", exchangeRateService.isApiAvailable());
@@ -123,7 +123,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/all/{baseCurrency}
      */
     @GetMapping("/all/{baseCurrency}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<String> getAllRates(@PathVariable String baseCurrency) {
         String allRates = exchangeRateService.fetchAllRates(baseCurrency);
         return ResponseEntity.ok(allRates);
@@ -134,7 +134,7 @@ public class ExchangeRateController {
      * GET /api/exchange-rates/metadata/{baseCurrency}
      */
     @GetMapping("/metadata/{baseCurrency}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<String> getApiMetadata(@PathVariable String baseCurrency) {
         String metadata = exchangeRateService.getApiMetadata(baseCurrency);
         return ResponseEntity.ok(metadata);

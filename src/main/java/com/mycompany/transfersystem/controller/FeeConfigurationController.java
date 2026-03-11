@@ -17,7 +17,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/fees")
-@PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+@PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN','MOTHER_BRANCH_ADMIN','BRANCH_MANAGER')")
 public class FeeConfigurationController {
 
     private final FeeManagementService feeManagementService;

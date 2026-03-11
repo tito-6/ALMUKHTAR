@@ -34,6 +34,9 @@ public class AuditLog {
     @Column(name = "entity_id", nullable = false)
     private Long entityId;
 
+    @Column(length = 512)
+    private String details;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -53,6 +56,9 @@ public class AuditLog {
     
     public Long getEntityId() { return entityId; }
     public void setEntityId(Long entityId) { this.entityId = entityId; }
+    
+    public String getDetails() { return details; }
+    public void setDetails(String details) { this.details = details; }
     
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

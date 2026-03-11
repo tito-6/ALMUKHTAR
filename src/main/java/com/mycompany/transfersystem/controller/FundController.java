@@ -33,14 +33,14 @@ public class FundController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
     public ResponseEntity<FundResponse> createFund(@Valid @RequestBody FundRequest request) {
         FundResponse createdFund = fundService.createFund(request);
         return new ResponseEntity<>(createdFund, HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
     public ResponseEntity<FundResponse> updateFund(@PathVariable Long id, 
                                                  @Valid @RequestBody FundRequest request) {
         FundResponse updatedFund = fundService.updateFund(id, request);
@@ -48,7 +48,7 @@ public class FundController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN')")
     public ResponseEntity<Void> deleteFund(@PathVariable Long id) {
         fundService.deleteFund(id);
         return ResponseEntity.noContent().build();

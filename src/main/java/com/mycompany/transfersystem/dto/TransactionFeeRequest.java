@@ -30,6 +30,8 @@ public class TransactionFeeRequest {
     @NotNull(message = "Receiver branch ID is required")
     private Long receiverBranchId;
 
+    private Long senderId;
+
     // Manual getters and setters for Lombok compatibility
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
@@ -45,4 +47,7 @@ public class TransactionFeeRequest {
     
     public Long getReceiverBranchId() { return receiverBranchId; }
     public void setReceiverBranchId(Long receiverBranchId) { this.receiverBranchId = receiverBranchId; }
+    
+    public Long getSenderId() { return senderId; }
+    public void setSenderId(Long senderId) { this.senderId = senderId; }
 }

@@ -37,4 +37,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     
     @Query("SELECT COUNT(t) FROM Transaction t WHERE t.createdAt > :startDate")
     long countByCreatedAtAfter(@Param("startDate") LocalDateTime startDate);
+
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE (t.sender.id = :userId OR t.receiver.id = :userId) AND t.status = 'COMPLETED' AND t.createdAt > :since")
+    long countCompletedByUserSince(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t WHERE (t.sender.id = :userId OR t.receiver.id = :userId) AND t.status = 'COMPLETED' AND t.createdAt > :since")
+    java.math.BigDecimal sumAmountByUserSince(@Param("userId") Long userId, @Param("since") LocalDateTime since);
 }

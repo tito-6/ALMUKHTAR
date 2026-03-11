@@ -46,6 +46,9 @@ public class TransactionService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired(required = false)
+    private com.mycompany.transfersystem.service.accounting.AccountingLedgerService accountingLedgerService;
+
     public List<TransactionResponse> getAllTransactions() {
         return transactionRepository.findAll().stream()
                 .map(this::convertToResponse)
@@ -66,9 +69,10 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
         
-        // Get branches for this transaction
-        Branch receiverBranch = branchRepository.findById(transaction.getReceiver().getBranch().getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Receiver branch not found"));
+        // Get branches for this transaction (receiver branch may be null)
+        Branch receiverBranch = transaction.getReceiver().getBranch() != null
+                ? branchRepository.findById(transaction.getReceiver().getBranch().getId()).orElse(null)
+                : null;
         
         // Create a basic transaction record (we'll need to reconstruct the full record)
         // For now, create a simplified version
@@ -83,7 +87,7 @@ public class TransactionService {
         record.setUpdatedAt(LocalDateTime.now());
         
         // Security: Hide passcode from receiving branch employees
-        if (requestingBranchId != null && requestingBranchId.equals(receiverBranch.getId())) {
+        if (receiverBranch != null && requestingBranchId != null && requestingBranchId.equals(receiverBranch.getId())) {
             // Branch B employee - hide the passcode
             record.setReleasePasscode(null);
         } else {
@@ -138,6 +142,7 @@ public class TransactionService {
         feeRequest.setDestinationCurrency(request.getDestinationCurrency());
         feeRequest.setSenderBranchId(request.getSenderBranchId());
         feeRequest.setReceiverBranchId(request.getReceiverBranchId());
+        feeRequest.setSenderId(request.getSenderId());
 
         // Calculate fees using the new fee calculation service
         FeeBreakdownDTO feeBreakdown = feeCalculationService.calculateTransactionFees(feeRequest);
@@ -207,14 +212,20 @@ public class TransactionService {
 
             // 8. Send notifications
             sendTransactionNotifications(savedTransaction, sender, receiver, senderBranch, receiverBranch, releasePasscode);
+            notificationService.notifyTransactionComplete(savedTransaction);
 
             // 9. Log the transaction (if authentication is available)
             try {
                 User currentUser = getCurrentUser();
                 auditService.log("EXECUTE_TRANSFER", currentUser, "Transaction", savedTransaction.getId());
+                if (accountingLedgerService != null) {
+                    String debitCode = "RECEIVER-" + receiver.getId();
+                    String creditCode = "FUND-" + fund.getId();
+                    accountingLedgerService.postDoubleEntry(savedTransaction, debitCode, creditCode,
+                            feeBreakdown.getUsdEquivalent(), "USD", "Transfer " + savedTransaction.getId(), currentUser);
+                }
             } catch (Exception e) {
                 // Skip audit logging if no authentication context (e.g., in tests)
-                // This is acceptable for testing scenarios
             }
 
             // 10. Create comprehensive transaction record
@@ -273,15 +284,72 @@ public class TransactionService {
             savedTransaction.setStatus(TransactionStatus.COMPLETED);
             savedTransaction = transactionRepository.save(savedTransaction);
 
-            // Log the transaction
+            // Log the transaction and post to ledger
             User currentUser = getCurrentUser();
             auditService.log("CREATE_TRANSACTION", currentUser, "Transaction", savedTransaction.getId());
-
+            if (accountingLedgerService != null) {
+                String debitCode = "RECEIVER-" + receiver.getId();
+                String creditCode = "FUND-" + fund.getId();
+                accountingLedgerService.postDoubleEntry(savedTransaction, debitCode, creditCode,
+                        request.getAmount(), "USD", "Transfer " + savedTransaction.getId(), currentUser);
+            }
         } catch (Exception e) {
             // If something goes wrong, mark transaction as FAILED
             savedTransaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(savedTransaction);
             throw new InvalidTransactionException("Transaction failed: " + e.getMessage());
+        }
+
+        return convertToResponse(savedTransaction);
+    }
+
+    /**
+     * Create a PENDING transfer for QR release flow. Deducts from fund and generates passcode,
+     * but leaves transaction PENDING until QR is scanned at receiving branch.
+     */
+    @Transactional
+    public TransactionResponse createTransferForQr(TransferRequest request) {
+        User sender = userRepository.findById(request.getSenderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Sender not found with id: " + request.getSenderId()));
+
+        User receiver = userRepository.findById(request.getReceiverId())
+                .orElseThrow(() -> new ResourceNotFoundException("Receiver not found with id: " + request.getReceiverId()));
+
+        Fund fund = fundRepository.findById(request.getFundId())
+                .orElseThrow(() -> new ResourceNotFoundException("Fund not found with id: " + request.getFundId()));
+
+        if (fund.getStatus() != FundStatus.ACTIVE) {
+            throw new InvalidTransactionException("Fund is not active");
+        }
+
+        if (sender.getId().equals(receiver.getId())) {
+            throw new InvalidTransactionException("Sender and receiver cannot be the same");
+        }
+
+        if (fund.getBalance().compareTo(request.getAmount()) < 0) {
+            throw new InsufficientFundsException("Insufficient balance in fund: " + fund.getName());
+        }
+
+        String releasePasscode = notificationService.generateReleasePasscode();
+
+        Transaction transaction = new Transaction();
+        transaction.setSender(sender);
+        transaction.setReceiver(receiver);
+        transaction.setFund(fund);
+        transaction.setAmount(request.getAmount());
+        transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setReleasePasscode(releasePasscode);
+        transaction.setCurrencyCode("USD");
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        fund.setBalance(fund.getBalance().subtract(request.getAmount()));
+        fundRepository.save(fund);
+
+        try {
+            User currentUser = getCurrentUser();
+            auditService.log("CREATE_TRANSFER_QR", currentUser, "Transaction", savedTransaction.getId());
+        } catch (Exception e) {
+            // Skip if no auth context
         }
 
         return convertToResponse(savedTransaction);

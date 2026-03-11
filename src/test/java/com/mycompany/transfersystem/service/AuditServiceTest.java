@@ -84,7 +84,7 @@ public class AuditServiceTest {
         superAdmin = new User();
         superAdmin.setUsername("admin");
         superAdmin.setPassword("admin123");
-        superAdmin.setRole(UserRole.SUPER_ADMIN);
+        superAdmin.setRole(UserRole.PLATFORM_OWNER);
         superAdmin = entityManager.persistAndFlush(superAdmin);
 
         branchManagerA = new User();

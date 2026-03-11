@@ -27,16 +27,19 @@ public class FeeCalculationService {
     private final CommissionRateRepository commissionRateRepository;
     private final BranchRepository branchRepository;
     private final CurrencyRepository currencyRepository;
+    private final GamificationService gamificationService;
 
     @Autowired
     public FeeCalculationService(BranchFeeRateRepository branchFeeRateRepository,
                                 CommissionRateRepository commissionRateRepository,
                                 BranchRepository branchRepository,
-                                CurrencyRepository currencyRepository) {
+                                CurrencyRepository currencyRepository,
+                                @org.springframework.beans.factory.annotation.Autowired(required = false) GamificationService gamificationService) {
         this.branchFeeRateRepository = branchFeeRateRepository;
         this.commissionRateRepository = commissionRateRepository;
         this.branchRepository = branchRepository;
         this.currencyRepository = currencyRepository;
+        this.gamificationService = gamificationService;
     }
 
     // For simple unit tests that don't need repository access
@@ -45,6 +48,7 @@ public class FeeCalculationService {
         this.commissionRateRepository = null;
         this.branchRepository = null;
         this.currencyRepository = null;
+        this.gamificationService = null;
     }
 
     // Convert an amount in sourceCurrency to USD equivalent using Currency.exchangeRateToUsd if present
@@ -134,7 +138,16 @@ public class FeeCalculationService {
         BigDecimal sendingBranchFee = calculateSendingBranchFeeNew(usdEquivalent, senderBranch);
         BigDecimal receivingBranchFee = calculateReceivingBranchFeeNew(usdEquivalent, receiverBranch);
 
-        return new FeeBreakdownDTO(platformBaseFee, platformExchangeProfit, sendingBranchFee, receivingBranchFee, usdEquivalent);
+        FeeBreakdownDTO dto = new FeeBreakdownDTO(platformBaseFee, platformExchangeProfit, sendingBranchFee, receivingBranchFee, usdEquivalent);
+        if (gamificationService != null && request.getSenderId() != null) {
+            BigDecimal multiplier = gamificationService.getFeeDiscountMultiplier(request.getSenderId());
+            dto.setPlatformBaseFee(dto.getPlatformBaseFee().multiply(multiplier).setScale(2, RoundingMode.HALF_UP));
+            dto.setPlatformExchangeProfit(dto.getPlatformExchangeProfit().multiply(multiplier).setScale(2, RoundingMode.HALF_UP));
+            dto.setSendingBranchFee(dto.getSendingBranchFee().multiply(multiplier).setScale(2, RoundingMode.HALF_UP));
+            dto.setReceivingBranchFee(dto.getReceivingBranchFee().multiply(multiplier).setScale(2, RoundingMode.HALF_UP));
+            dto.setTotalFee(dto.getPlatformBaseFee().add(dto.getPlatformExchangeProfit()).add(dto.getSendingBranchFee()).add(dto.getReceivingBranchFee()));
+        }
+        return dto;
     }
 
     /**

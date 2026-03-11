@@ -142,7 +142,7 @@ public class FeeConfigurationIT {
 
     @Test
     public void testSuperAdminCanModifyPlatformFee() throws Exception {
-        // Test 1: SUPER_ADMIN Success - Change PLATFORM_EXCHANGE_PROFIT from 1.50 to 2.00
+        // Test 1: PLATFORM_OWNER Success - Change PLATFORM_EXCHANGE_PROFIT from 1.50 to 2.00
         FeeUpdateRequest request = new FeeUpdateRequest();
         request.setNewRate(new BigDecimal("2.00"));
 

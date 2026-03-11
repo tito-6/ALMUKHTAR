@@ -28,18 +28,21 @@ public class AuditService {
     private final BranchRepository branchRepository;
     private final CommissionRateRepository commissionRateRepository;
     private final AuditLogRepository auditLogRepository;
+    private final UserRepository userRepository;
 
     @Autowired
     public AuditService(TransactionRepository transactionRepository,
                        FundRepository fundRepository,
                        BranchRepository branchRepository,
                        CommissionRateRepository commissionRateRepository,
-                       AuditLogRepository auditLogRepository) {
+                       AuditLogRepository auditLogRepository,
+                       UserRepository userRepository) {
         this.transactionRepository = transactionRepository;
         this.fundRepository = fundRepository;
         this.branchRepository = branchRepository;
         this.commissionRateRepository = commissionRateRepository;
         this.auditLogRepository = auditLogRepository;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -276,14 +279,38 @@ public class AuditService {
      * @param entityId ID of entity affected
      */
     public void log(String action, User user, String entityType, Long entityId) {
+        log(action, entityType, entityId, null, user);
+    }
+
+    /**
+     * Log an audit event with details
+     * @param action Action performed
+     * @param entityType Type of entity affected
+     * @param entityId ID of entity affected
+     * @param details Optional details string
+     * @param user User who performed the action
+     */
+    public void log(String action, String entityType, Long entityId, String details, User user) {
         AuditLog auditLog = new AuditLog();
         auditLog.setAction(action);
         auditLog.setUser(user);
         auditLog.setEntity(entityType);
         auditLog.setEntityId(entityId);
-        // createdAt is automatically set by @CreationTimestamp
-        
+        auditLog.setDetails(details);
         auditLogRepository.save(auditLog);
+    }
+
+    /**
+     * Log a system error (no user context) - uses SYSTEM user
+     * @param action Action identifier
+     * @param reference Reference ID or context
+     * @param errorMessage Error message
+     */
+    public void logSystemError(String action, String reference, String errorMessage) {
+        User systemUser = userRepository.findByUsername("SYSTEM")
+                .orElseThrow(() -> new IllegalStateException("SYSTEM user must exist for audit logging"));
+        String details = reference + ": " + errorMessage;
+        log(action, "SYSTEM", 0L, details, systemUser);
     }
 
     /**

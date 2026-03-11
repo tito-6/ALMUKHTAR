@@ -49,6 +49,16 @@ public class Transaction {
     @Column(name = "release_passcode")
     private String releasePasscode;
 
+    @Column(name = "currency_code", length = 5)
+    private String currencyCode;
+
+    @Column(name = "idempotency_key", unique = true, length = 128)
+    private String idempotencyKey;
+
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     // Manual getters and setters for Lombok compatibility
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -73,4 +83,13 @@ public class Transaction {
     
     public String getReleasePasscode() { return releasePasscode; }
     public void setReleasePasscode(String releasePasscode) { this.releasePasscode = releasePasscode; }
+    
+    public String getCurrencyCode() { return currencyCode; }
+    public void setCurrencyCode(String currencyCode) { this.currencyCode = currencyCode; }
+    
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 }

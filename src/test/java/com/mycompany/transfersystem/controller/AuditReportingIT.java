@@ -167,9 +167,9 @@ public class AuditReportingIT {
 
     // Test 1c: Super Admin Fund Access
     @Test
-    @WithMockUser(username = "admin", roles = {"SUPER_ADMIN"})
+    @WithMockUser(username = "admin", roles = {"PLATFORM_OWNER"})
     void testSuperAdminFundAccess() throws Exception {
-        // SUPER_ADMIN can access any branch fund
+        // PLATFORM_OWNER can access any branch fund
         mockMvc.perform(get("/api/audit/funds/{branchId}", branchA.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.branchId").value(branchA.getId()));
@@ -189,9 +189,9 @@ public class AuditReportingIT {
 
     // Test 2b: Super Admin Transaction Filtering
     @Test
-    @WithMockUser(username = "admin", roles = {"SUPER_ADMIN"})
+    @WithMockUser(username = "admin", roles = {"PLATFORM_OWNER"})
     void testSuperAdminTransactionFiltering() throws Exception {
-        // SUPER_ADMIN can search transactions
+        // PLATFORM_OWNER can search transactions
         mockMvc.perform(get("/api/audit/transactions/search")
                         .param("sourceCurrency", "USD")
                         .param("destinationCurrency", "EUR"))
@@ -220,9 +220,9 @@ public class AuditReportingIT {
 
     // Test 3b: Super Admin Fee History
     @Test
-    @WithMockUser(username = "admin", roles = {"SUPER_ADMIN"})
+    @WithMockUser(username = "admin", roles = {"PLATFORM_OWNER"})
     void testSuperAdminFeeHistory() throws Exception {
-        // SUPER_ADMIN can view fee modification history
+        // PLATFORM_OWNER can view fee modification history
         mockMvc.perform(get("/api/audit/fees/history"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
@@ -239,9 +239,9 @@ public class AuditReportingIT {
 
     // Test 4: Super Admin Summary
     @Test
-    @WithMockUser(username = "admin", roles = {"SUPER_ADMIN"})
+    @WithMockUser(username = "admin", roles = {"PLATFORM_OWNER"})
     void testSuperAdminSummary() throws Exception {
-        // SUPER_ADMIN can view platform summary
+        // PLATFORM_OWNER can view platform summary
         mockMvc.perform(get("/api/audit/platform-summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fundName").value("Platform Fund"))

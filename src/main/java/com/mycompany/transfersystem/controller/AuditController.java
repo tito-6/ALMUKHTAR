@@ -33,7 +33,7 @@ public class AuditController {
      * Access: BRANCH_MANAGER (must match branchId) or SUPER_ADMIN
      */
     @GetMapping("/funds/{branchId}")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
     public ResponseEntity<Map<String, Object>> getBranchFundStatus(@PathVariable Long branchId) {
         try {
             Map<String, Object> fundStatus = auditService.getBranchFundStatus(branchId);
@@ -49,7 +49,7 @@ public class AuditController {
      * Access: SUPER_ADMIN and AUDITOR role
      */
     @GetMapping("/transactions/search")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<Page<Transaction>> searchTransactions(
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
@@ -104,7 +104,7 @@ public class AuditController {
      * Access: SUPER_ADMIN and AUDITOR role
      */
     @GetMapping("/fees/history")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<List<Map<String, Object>>> getFeeModificationHistory() {
         try {
             List<Map<String, Object>> feeHistory = auditService.getFeeModificationHistory();
@@ -120,7 +120,7 @@ public class AuditController {
      * Access: SUPER_ADMIN only
      */
     @GetMapping("/platform-summary")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN')")
     public ResponseEntity<Map<String, Object>> getPlatformSummary() {
         try {
             Map<String, Object> summary = auditService.getPlatformSummary();
@@ -136,7 +136,7 @@ public class AuditController {
      * Access: BRANCH_MANAGER (must match branchId) or SUPER_ADMIN
      */
     @GetMapping("/branches/{branchId}/transactions")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
     public ResponseEntity<Map<String, Object>> getBranchTransactionReport(
             @PathVariable Long branchId,
             @RequestParam(defaultValue = "30") Integer days) {
@@ -154,7 +154,7 @@ public class AuditController {
      * Access: BRANCH_MANAGER (must match branchId) or SUPER_ADMIN
      */
     @GetMapping("/branches/{branchId}/commission-rates")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('BRANCH_MANAGER')")
     public ResponseEntity<List<CommissionRate>> getBranchCommissionRates(@PathVariable Long branchId) {
         try {
             List<CommissionRate> commissionRates = auditService.getBranchCommissionRates(branchId);
@@ -170,7 +170,7 @@ public class AuditController {
      * Access: SUPER_ADMIN and AUDITOR role
      */
     @GetMapping("/logs")
-    @PreAuthorize("hasRole('SUPER_ADMIN') or hasRole('AUDITOR')")
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN') or hasRole('AUDITOR')")
     public ResponseEntity<List<AuditLog>> getAuditLogs(
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String entityType,
