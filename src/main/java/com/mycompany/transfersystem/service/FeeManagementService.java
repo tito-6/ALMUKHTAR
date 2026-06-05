@@ -157,4 +157,33 @@ public class FeeManagementService {
 
         return commissionRateRepository.findByBranch(branch);
     }
+
+    /**
+     * Creates the standard set of commission rates for a branch when they are missing.
+     * Safe to call repeatedly (idempotent) — existing rates are left untouched.
+     */
+    public void createDefaultRatesForBranch(Branch branch) {
+        createRateIfMissing(branch, CommissionScope.PLATFORM_BASE_FEE, new BigDecimal("1.50"));
+        createRateIfMissing(branch, CommissionScope.PLATFORM_EXCHANGE_PROFIT, new BigDecimal("1.50"));
+        createRateIfMissing(branch, CommissionScope.WALLET_EXCHANGE, new BigDecimal("0.50"));
+        createRateIfMissing(branch, CommissionScope.SENDING_BRANCH_FEE, new BigDecimal("1.50"));
+        createRateIfMissing(branch, CommissionScope.RECEIVING_BRANCH_FEE, new BigDecimal("4.00"));
+    }
+
+    private void createRateIfMissing(Branch branch, CommissionScope scope, BigDecimal value) {
+        if (commissionRateRepository.findByBranchAndCommissionScope(branch, scope).isEmpty()) {
+            commissionRateRepository.save(new CommissionRate(branch, scope, value));
+        }
+    }
+
+    /**
+     * Backfills any missing default commission rates for an existing branch and
+     * returns the full, up-to-date list of rates for that branch.
+     */
+    public java.util.List<CommissionRate> initializeDefaultRates(Long branchId) {
+        Branch branch = branchRepository.findById(branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Branch not found with ID: " + branchId));
+        createDefaultRatesForBranch(branch);
+        return commissionRateRepository.findByBranch(branch);
+    }
 }

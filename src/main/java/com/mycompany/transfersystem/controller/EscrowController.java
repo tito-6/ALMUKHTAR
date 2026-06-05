@@ -1,10 +1,12 @@
 package com.mycompany.transfersystem.controller;
 
 import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
+import com.mycompany.transfersystem.dto.escrow.CreateEscrowContractRequest;
 import com.mycompany.transfersystem.dto.escrow.EscrowContractResponse;
 import com.mycompany.transfersystem.dto.escrow.EscrowDisputeRequest;
 import com.mycompany.transfersystem.entity.EscrowContract;
 import com.mycompany.transfersystem.entity.User;
+import com.mycompany.transfersystem.exception.ResourceNotFoundException;
 import com.mycompany.transfersystem.repository.EscrowContractRepository;
 import com.mycompany.transfersystem.repository.UserRepository;
 import com.mycompany.transfersystem.service.escrow.EscrowWorkflowService;
@@ -33,6 +35,28 @@ public class EscrowController {
         this.escrowContractRepository = escrowContractRepository;
         this.userRepository = userRepository;
         this.escrowWorkflowService = escrowWorkflowService;
+    }
+
+    @PostMapping
+    @RequireIdempotencyKey
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<EscrowContractResponse> create(@Valid @RequestBody CreateEscrowContractRequest req,
+                                                          @AuthenticationPrincipal UserDetails userDetails) {
+        User initiator = SecurityUtils.resolveUser(userDetails, userRepository);
+        User beneficiary = userRepository.findById(req.getBeneficiaryUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Beneficiary user not found: " + req.getBeneficiaryUserId()));
+        EscrowContract contract = EscrowContract.builder()
+                .initiatorUser(initiator)
+                .beneficiaryUser(beneficiary)
+                .amount(req.getAmount())
+                .currency(req.getCurrency())
+                .title(req.getTitle())
+                .description(req.getDescription())
+                .conditionType(req.getConditionType())
+                .releaseDate(req.getReleaseDate())
+                .status("PENDING")
+                .build();
+        return ResponseEntity.ok(EscrowContractResponse.from(escrowContractRepository.save(contract)));
     }
 
     @GetMapping("/my-contracts")

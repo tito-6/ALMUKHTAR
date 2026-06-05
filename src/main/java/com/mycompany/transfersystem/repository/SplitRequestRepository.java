@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface SplitRequestRepository extends JpaRepository<SplitRequest, Long> {
     List<SplitRequest> findByStatusAndExpiresAtBefore(SplitRequest.SplitStatus status, LocalDateTime now);
+    List<SplitRequest> findByInitiatorUser_IdOrderByCreatedAtDesc(Long userId);
 }

@@ -14,6 +14,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 import java.time.LocalDateTime;
 
 @RestController
@@ -24,6 +26,14 @@ public class CampaignController {
 
     private final CampaignService campaignService;
     private final UserRepository userRepository;
+    private final com.mycompany.transfersystem.repository.NotificationCampaignRepository campaignRepository;
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','MOTHER_BRANCH_ADMIN')")
+    public ResponseEntity<List<NotificationCampaign>> list() {
+        return ResponseEntity.ok(campaignRepository.findAll(
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt")));
+    }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('PLATFORM_OWNER','MOTHER_BRANCH_ADMIN')")

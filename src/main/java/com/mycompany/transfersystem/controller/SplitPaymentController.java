@@ -3,6 +3,7 @@ package com.mycompany.transfersystem.controller;
 import com.mycompany.transfersystem.dto.split.CreateSplitRequest;
 import com.mycompany.transfersystem.entity.SplitRequest;
 import com.mycompany.transfersystem.entity.User;
+import com.mycompany.transfersystem.repository.SplitRequestRepository;
 import com.mycompany.transfersystem.repository.UserRepository;
 import com.mycompany.transfersystem.service.split.SplitPaymentService;
 import com.mycompany.transfersystem.util.SecurityUtils;
@@ -14,6 +15,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/split")
 @CrossOrigin(origins = "*")
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 public class SplitPaymentController {
 
     private final SplitPaymentService splitPaymentService;
+    private final SplitRequestRepository splitRequestRepository;
     private final UserRepository userRepository;
 
     @PostMapping
@@ -29,6 +33,13 @@ public class SplitPaymentController {
                                                 @AuthenticationPrincipal UserDetails userDetails) {
         User user = SecurityUtils.resolveUser(userDetails, userRepository);
         return ResponseEntity.ok(splitPaymentService.createSplit(user.getId(), dto));
+    }
+
+    @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('INDIVIDUAL_USER','CORPORATE_ADMIN')")
+    public ResponseEntity<List<SplitRequest>> my(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = SecurityUtils.resolveUser(userDetails, userRepository);
+        return ResponseEntity.ok(splitRequestRepository.findByInitiatorUser_IdOrderByCreatedAtDesc(user.getId()));
     }
 
     @PostMapping("/{participantId}/respond")

@@ -57,7 +57,7 @@ public class GamificationController {
     }
 
     @GetMapping("/leaderboard")
-    @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN','BRANCH_MANAGER')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Page<TrustScoreResponse>> leaderboard(Pageable pageable) {
         return ResponseEntity.ok(trustScoreRepository.findAllByOrderByScoreDesc(pageable)
                 .map(TrustScoreResponse::from));

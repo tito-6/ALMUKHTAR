@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -21,13 +22,21 @@ public class CashTransferOrder {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_branch_id", nullable = false)
     private Branch fromBranch;
 
+    @Column(name = "from_branch_id", insertable = false, updatable = false)
+    private Long fromBranchId;
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_branch_id", nullable = false)
     private Branch toBranch;
+
+    @Column(name = "to_branch_id", insertable = false, updatable = false)
+    private Long toBranchId;
 
     @Column(nullable = false, length = 10)
     private String currency;
@@ -39,13 +48,21 @@ public class CashTransferOrder {
     @Column(nullable = false, length = 20)
     private OrderStatus status;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requested_by")
     private User requestedBy;
 
+    @Column(name = "requested_by", insertable = false, updatable = false)
+    private Long requestedById;
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
     private User approvedBy;
+
+    @Column(name = "approved_by", insertable = false, updatable = false)
+    private Long approvedById;
 
     @Column(name = "approved_at")
     private LocalDateTime approvedAt;

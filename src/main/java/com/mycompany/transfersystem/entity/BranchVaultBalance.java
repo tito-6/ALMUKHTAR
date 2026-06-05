@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -25,9 +26,13 @@ public class BranchVaultBalance {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "branch_id", nullable = false)
     private Branch branch;
+
+    @Column(name = "branch_id", insertable = false, updatable = false)
+    private Long branchId;
 
     @Column(nullable = false, length = 10)
     private String currency;

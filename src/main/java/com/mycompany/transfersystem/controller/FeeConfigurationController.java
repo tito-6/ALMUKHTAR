@@ -96,4 +96,17 @@ public class FeeConfigurationController {
         List<CommissionRate> rates = feeManagementService.getCommissionRatesForBranch(branchId);
         return ResponseEntity.ok(rates);
     }
+
+    /**
+     * Creates any missing default commission rates for a branch and returns the
+     * complete set. Useful for branches that were created before fee rates existed.
+     * POST /api/admin/fees/{branchId}/defaults
+     */
+    @PostMapping("/{branchId}/defaults")
+    public ResponseEntity<List<CommissionRate>> initializeDefaultRates(
+            @PathVariable Long branchId) {
+
+        List<CommissionRate> rates = feeManagementService.initializeDefaultRates(branchId);
+        return ResponseEntity.ok(rates);
+    }
 }
