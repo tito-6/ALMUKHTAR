@@ -42,6 +42,6 @@ public class CreditProfile {
     private Instant nextReviewAt;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "score_components", columnDefinition = "jsonb")
+    @Column(name = "score_components")
     private Map<String, Object> scoreComponents;
 }

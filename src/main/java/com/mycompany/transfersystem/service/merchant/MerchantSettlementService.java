@@ -11,6 +11,7 @@ import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.wallet.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ public class MerchantSettlementService {
     }
 
     @Scheduled(cron = "0 0 23 * * *")
+    @SchedulerLock(name = "merchant-settlement", lockAtMostFor = "PT20M")
     @Transactional
     public void runDailySettlement() {
         LocalDate periodEnd = LocalDate.now().minusDays(1);

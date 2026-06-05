@@ -9,4 +9,6 @@ public interface BillPaymentRequestRepository extends JpaRepository<BillPaymentR
 
     List<BillPaymentRequest> findByUser_IdOrderByCreatedAtDesc(Long userId);
     List<BillPaymentRequest> findByStatus(String status);
+
+    long countByStatus(String status);
 }

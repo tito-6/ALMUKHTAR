@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.wallet.WalletExchangeRequest;
 import com.mycompany.transfersystem.dto.wallet.WalletResponse;
 import com.mycompany.transfersystem.entity.User;
@@ -70,6 +71,7 @@ public class WalletController {
     }
 
     @PostMapping("/exchange")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> exchange(
             @Valid @RequestBody WalletExchangeRequest request,

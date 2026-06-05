@@ -1,10 +1,13 @@
 package com.mycompany.transfersystem.service.lending;
 
 import com.mycompany.transfersystem.entity.Loan;
+import com.mycompany.transfersystem.entity.LoanLateFee;
+import com.mycompany.transfersystem.entity.LoanRepayment;
 import com.mycompany.transfersystem.entity.LoanRepaymentSchedule;
 import com.mycompany.transfersystem.entity.User;
 import com.mycompany.transfersystem.entity.Wallet;
 import com.mycompany.transfersystem.entity.enums.WalletTransactionType;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
 import com.mycompany.transfersystem.repository.*;
 import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.GamificationService;
@@ -12,6 +15,8 @@ import com.mycompany.transfersystem.service.revenue.PlatformRevenueService;
 import com.mycompany.transfersystem.service.wallet.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +44,7 @@ public class LoanSchedulerService {
     private final GamificationService gamificationService;
     private final PlatformRevenueService platformRevenueService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public LoanSchedulerService(LoanRepaymentScheduleRepository scheduleRepository,
                                 LoanRepository loanRepository,
@@ -50,7 +56,8 @@ public class LoanSchedulerService {
                                 CreditScoringService creditScoringService,
                                 GamificationService gamificationService,
                                 PlatformRevenueService platformRevenueService,
-                                AuditService auditService) {
+                                AuditService auditService,
+                                ApplicationEventPublisher applicationEventPublisher) {
         this.scheduleRepository = scheduleRepository;
         this.loanRepository = loanRepository;
         this.repaymentRepository = repaymentRepository;
@@ -62,15 +69,28 @@ public class LoanSchedulerService {
         this.gamificationService = gamificationService;
         this.platformRevenueService = platformRevenueService;
         this.auditService = auditService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Scheduled(cron = "0 0 8 * * *")
+    @SchedulerLock(name = "loan-scheduler", lockAtMostFor = "PT30M")
     @Transactional
     public void processDueInstalments() {
         LocalDate today = LocalDate.now();
         List<LoanRepaymentSchedule> dueToday = scheduleRepository.findByDueDateAndStatus(today, "PENDING");
         for (LoanRepaymentSchedule schedule : dueToday) {
             try {
+                Loan loan = schedule.getLoan();
+                BigDecimal totalDue = schedule.getTotalDue().subtract(schedule.getPaidAmount());
+                if (totalDue.compareTo(BigDecimal.ZERO) > 0) {
+                    applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.LoanPaymentDueEvent(
+                            loan.getId(),
+                            loan.getUser().getId(),
+                            schedule.getId(),
+                            totalDue,
+                            loan.getCurrency(),
+                            schedule.getDueDate() != null ? schedule.getDueDate().toString() : ""));
+                }
                 processOneInstalment(schedule);
             } catch (Exception e) {
                 log.warn("Failed to process schedule {}: {}", schedule.getId(), e.getMessage());
@@ -139,6 +159,8 @@ public class LoanSchedulerService {
         }
         creditScoringService.reduceScoreByPoints(loan.getUser().getId(), CREDIT_SCORE_MISSED_PENALTY);
         auditService.log("LOAN_REPAYMENT_MISSED", "LOAN", loan.getId(), "Schedule " + schedule.getInstalmentNumber(), loan.getUser());
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.LoanPaymentFailedEvent(
+                loan.getId(), loan.getUser().getId(), schedule.getId(), "AUTO_DEBIT_FAILED", lateFee, false));
     }
 
     private void markDefaultedLoans() {
@@ -148,8 +170,13 @@ public class LoanSchedulerService {
             if (!"ACTIVE".equals(loan.getStatus())) continue;
             loan.setStatus("DEFAULTED");
             loanRepository.save(loan);
-            walletRepository.findByUser_Id(loan.getUser().getId()).ifPresent(w -> walletService.freezeWallet(w.getId()));
+            walletRepository.findByUser_Id(loan.getUser().getId()).ifPresent(w -> walletService.freezeWallet(w.getId(),
+                    "LOAN_DEFAULT", "FRZ-LOAN-" + loan.getId(),
+                    "Your wallet is restricted due to loan default escalation.",
+                    "/api/disputes"));
             auditService.log("LOAN_DEFAULTED", "LOAN", loan.getId(), "Escalated after 30+ days missed", loan.getUser());
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.LoanPaymentFailedEvent(
+                    loan.getId(), loan.getUser().getId(), 0L, "DEFAULT_ESCALATION", BigDecimal.ZERO, true));
         }
     }
 

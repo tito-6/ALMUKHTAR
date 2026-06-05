@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.merchant.MerchantPaymentRequest;
 import com.mycompany.transfersystem.entity.MerchantTransaction;
 import com.mycompany.transfersystem.entity.User;
@@ -28,6 +29,7 @@ public class MerchantPaymentController {
     }
 
     @PostMapping("/pay")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<MerchantTransaction> pay(@Valid @RequestBody MerchantPaymentRequest request,
                                                    @AuthenticationPrincipal UserDetails userDetails) {

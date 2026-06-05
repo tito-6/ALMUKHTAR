@@ -26,12 +26,16 @@ public class TotpService {
         if (secret == null || code == null || code.length() != CODE_DIGITS) {
             return false;
         }
-        long currentBucket = timeProvider.getTime() / TIME_PERIOD;
-        for (int i = -windowTolerance; i <= windowTolerance; i++) {
-            String expectedCode = codeGenerator.generate(secret, currentBucket + i);
-            if (expectedCode.equals(code)) {
-                return true;
+        try {
+            long currentBucket = timeProvider.getTime() / TIME_PERIOD;
+            for (int i = -windowTolerance; i <= windowTolerance; i++) {
+                String expectedCode = codeGenerator.generate(secret, currentBucket + i);
+                if (expectedCode.equals(code)) {
+                    return true;
+                }
             }
+        } catch (dev.samstevens.totp.exceptions.CodeGenerationException e) {
+            return false;
         }
         return false;
     }

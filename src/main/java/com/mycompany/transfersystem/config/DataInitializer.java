@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -27,6 +29,12 @@ public class DataInitializer implements CommandLineRunner {
 
     @Autowired
     private CurrencyRepository currencyRepository;
+
+    @Autowired
+    private TranslationRepository translationRepository;
+
+    @Autowired
+    private BranchCashInventoryRepository branchCashInventoryRepository;
 
     @Autowired(required = false)
     private com.mycompany.transfersystem.repository.TrustScoreRepository trustScoreRepository;
@@ -72,10 +80,52 @@ public class DataInitializer implements CommandLineRunner {
 
         // Seed bill providers (Phase III P2)
         createBillProvidersIfNeeded();
+
+        // Seed clean Syrian Arabic UI copy for backend-served localization bundles
+        createSyrianArabicTranslationsIfNeeded();
+
+        // Seed operational cash inventory for Syria cash-pickup flows
+        createBranchCashInventoriesIfNeeded();
+
+        createTradableAssetsIfNeeded();
     }
 
     @Autowired(required = false)
     private com.mycompany.transfersystem.repository.PlatformTradingFeeRepository platformTradingFeeRepository;
+
+    @Autowired(required = false)
+    private com.mycompany.transfersystem.repository.TradableAssetRepository tradableAssetRepository;
+
+    private void createTradableAssetsIfNeeded() {
+        if (tradableAssetRepository == null || tradableAssetRepository.count() > 0) {
+            return;
+        }
+        java.util.List<com.mycompany.transfersystem.entity.TradableAsset> seed = java.util.List.of(
+                com.mycompany.transfersystem.entity.TradableAsset.builder()
+                        .symbol("AAPL").displayName("Apple Inc.").assetClass(com.mycompany.transfersystem.entity.enums.AssetClass.STOCK)
+                        .enabled(true).currency("USD").market("US")
+                        .minOrderValue(java.math.BigDecimal.ONE)
+                        .maxOrderValue(new java.math.BigDecimal("500000"))
+                        .riskLevel(com.mycompany.transfersystem.entity.enums.TradableAssetRiskLevel.MEDIUM)
+                        .build(),
+                com.mycompany.transfersystem.entity.TradableAsset.builder()
+                        .symbol("MSFT").displayName("Microsoft Corp.").assetClass(com.mycompany.transfersystem.entity.enums.AssetClass.STOCK)
+                        .enabled(true).currency("USD").market("US")
+                        .minOrderValue(java.math.BigDecimal.ONE)
+                        .maxOrderValue(new java.math.BigDecimal("500000"))
+                        .riskLevel(com.mycompany.transfersystem.entity.enums.TradableAssetRiskLevel.MEDIUM)
+                        .build(),
+                com.mycompany.transfersystem.entity.TradableAsset.builder()
+                        .symbol("EURUSD=X").displayName("EUR/USD").assetClass(com.mycompany.transfersystem.entity.enums.AssetClass.FOREX)
+                        .enabled(true).currency("USD").market("FX")
+                        .minOrderValue(new java.math.BigDecimal("100"))
+                        .maxOrderValue(new java.math.BigDecimal("2000000"))
+                        .riskLevel(com.mycompany.transfersystem.entity.enums.TradableAssetRiskLevel.HIGH)
+                        .build()
+        );
+        tradableAssetRepository.saveAll(seed);
+        System.out.println("Tradable assets seeded for sandbox trading.");
+    }
 
     private void createPlatformTradingFeesIfNeeded() {
         if (platformTradingFeeRepository == null) return;
@@ -177,12 +227,22 @@ public class DataInitializer implements CommandLineRunner {
         auditor.setRole(UserRole.AUDITOR);
         userRepository.save(auditor);
 
+        if (!userRepository.existsByUsername("corp_trader")) {
+            User corp = new User();
+            corp.setUsername("corp_trader");
+            corp.setPassword(passwordEncoder.encode("corp123"));
+            corp.setRole(UserRole.CORPORATE_ADMIN);
+            corp.setPhone("+963930000001");
+            userRepository.save(corp);
+        }
+
         System.out.println("Sample users created:");
         System.out.println("- admin/admin123 (PLATFORM_OWNER)");
         System.out.println("- mother_admin/mother123 (MOTHER_BRANCH_ADMIN)");
         System.out.println("- manager/manager123 (BRANCH_MANAGER)");
         System.out.println("- cashier/cashier123 (CASHIER)");
         System.out.println("- auditor/auditor123 (AUDITOR)");
+        System.out.println("- corp_trader/corp123 (CORPORATE_ADMIN)");
     }
 
     private void createSampleFunds() {
@@ -386,6 +446,169 @@ public class DataInitializer implements CommandLineRunner {
                 .apiIntegration("MANUAL")
                 .processingFeePct(new BigDecimal("2"))
                 .active(true)
+                .build());
+    }
+
+    private void createSyrianArabicTranslationsIfNeeded() {
+        Map<String, String> english = new LinkedHashMap<>();
+        english.put("app.name", "ALMUKHTAR Elite");
+        english.put("common.language", "Language");
+        english.put("common.direction", "ltr");
+        english.put("common.continue", "Continue");
+        english.put("common.cancel", "Cancel");
+        english.put("common.confirm", "Confirm");
+        english.put("common.save", "Save");
+        english.put("common.close", "Close");
+        english.put("common.search", "Search");
+        english.put("common.amount", "Amount");
+        english.put("common.currency", "Currency");
+        english.put("common.status", "Status");
+        english.put("common.branch", "Branch");
+        english.put("common.fees", "Fees");
+        english.put("common.total", "Total");
+        english.put("auth.login.title", "Sign in");
+        english.put("auth.username", "Username");
+        english.put("auth.password", "Password");
+        english.put("auth.login.submit", "Sign in");
+        english.put("auth.error.invalid", "Username or password is incorrect.");
+        english.put("home.balance", "Wallet balance");
+        english.put("home.quickTransfer", "Send hawala");
+        english.put("home.scanQr", "Scan QR");
+        english.put("home.payBill", "Pay a bill");
+        english.put("home.trade", "Trading");
+        english.put("transfer.title", "Send money");
+        english.put("transfer.senderBranch", "Sender branch");
+        english.put("transfer.receiverBranch", "Receiver branch");
+        english.put("transfer.receiverName", "Receiver name");
+        english.put("transfer.receiverPhone", "Receiver phone");
+        english.put("transfer.releaseCode", "Release code");
+        english.put("transfer.cleanPayout", "Receiver gets the full amount. Fees are paid by the sender branch.");
+        english.put("transfer.pending", "Transfer is pending until the release code is verified.");
+        english.put("transfer.completed", "Transfer completed successfully.");
+        english.put("transfer.failed", "Transfer failed. Please try again or contact the branch.");
+        english.put("qr.title", "Smart-Bridge QR");
+        english.put("qr.instructions", "Show this QR to the cashier at any ALMUKHTAR branch.");
+        english.put("qr.expired", "This QR code has expired. Please request a new one.");
+        english.put("qr.used", "This QR code was already used.");
+        english.put("wallet.title", "My wallet");
+        english.put("wallet.topup", "Top up wallet");
+        english.put("wallet.exchange", "Exchange currency");
+        english.put("wallet.frozen", "Wallet is temporarily frozen. Contact support.");
+        english.put("kyc.title", "Identity verification");
+        english.put("kyc.uploadId", "Upload ID document");
+        english.put("kyc.selfie", "Upload selfie");
+        english.put("kyc.pending", "Your verification is under review.");
+        english.put("merchant.pay", "Merchant payment");
+        english.put("bills.title", "Bills and top-ups");
+        english.put("trading.title", "Trading account");
+        english.put("trading.marketOrder", "Market order");
+        english.put("trading.limitOrder", "Limit order");
+        english.put("loan.title", "Small loans");
+        english.put("loan.apply", "Apply for a loan");
+        english.put("security.biometricRequired", "Biometric confirmation is required for this transaction.");
+        english.put("security.passcodeRequired", "Enter the 6-digit release code.");
+        english.put("offline.queued", "Transaction saved offline and will sync when internet returns.");
+        english.put("offline.synced", "Offline transaction synced successfully.");
+        english.put("support.contactBranch", "Contact your branch for help.");
+
+        Map<String, String> arabic = new LinkedHashMap<>();
+        arabic.put("app.name", "المختار إيليت");
+        arabic.put("common.language", "اللغة");
+        arabic.put("common.direction", "rtl");
+        arabic.put("common.continue", "متابعة");
+        arabic.put("common.cancel", "إلغاء");
+        arabic.put("common.confirm", "تأكيد");
+        arabic.put("common.save", "حفظ");
+        arabic.put("common.close", "إغلاق");
+        arabic.put("common.search", "بحث");
+        arabic.put("common.amount", "المبلغ");
+        arabic.put("common.currency", "العملة");
+        arabic.put("common.status", "الحالة");
+        arabic.put("common.branch", "الفرع");
+        arabic.put("common.fees", "الأجور");
+        arabic.put("common.total", "المجموع");
+        arabic.put("auth.login.title", "تسجيل الدخول");
+        arabic.put("auth.username", "اسم المستخدم");
+        arabic.put("auth.password", "كلمة السر");
+        arabic.put("auth.login.submit", "دخول");
+        arabic.put("auth.error.invalid", "اسم المستخدم أو كلمة السر غير صحيحة.");
+        arabic.put("home.balance", "رصيد المحفظة");
+        arabic.put("home.quickTransfer", "إرسال حوالة");
+        arabic.put("home.scanQr", "مسح QR");
+        arabic.put("home.payBill", "دفع فاتورة");
+        arabic.put("home.trade", "التداول");
+        arabic.put("transfer.title", "إرسال حوالة");
+        arabic.put("transfer.senderBranch", "فرع الإرسال");
+        arabic.put("transfer.receiverBranch", "فرع الاستلام");
+        arabic.put("transfer.receiverName", "اسم المستلم");
+        arabic.put("transfer.receiverPhone", "رقم المستلم");
+        arabic.put("transfer.releaseCode", "رمز التسليم");
+        arabic.put("transfer.cleanPayout", "المستلم يقبض المبلغ كامل. الأجور محسوبة على فرع الإرسال.");
+        arabic.put("transfer.pending", "الحوالة معلقة لحتى يتم التأكد من رمز التسليم.");
+        arabic.put("transfer.completed", "تمت الحوالة بنجاح.");
+        arabic.put("transfer.failed", "ما تمت الحوالة. حاول مرة تانية أو راجع الفرع.");
+        arabic.put("qr.title", "QR الاستلام الذكي");
+        arabic.put("qr.instructions", "فرجي هذا الرمز للكاشير بأي فرع من فروع المختار.");
+        arabic.put("qr.expired", "انتهت صلاحية رمز QR. اطلب رمز جديد.");
+        arabic.put("qr.used", "رمز QR مستخدم من قبل.");
+        arabic.put("wallet.title", "محفظتي");
+        arabic.put("wallet.topup", "تعبئة المحفظة");
+        arabic.put("wallet.exchange", "تصريف عملة");
+        arabic.put("wallet.frozen", "المحفظة موقوفة مؤقتا. تواصل مع الدعم.");
+        arabic.put("kyc.title", "تأكيد الهوية");
+        arabic.put("kyc.uploadId", "ارفع صورة الهوية");
+        arabic.put("kyc.selfie", "ارفع صورة سيلفي");
+        arabic.put("kyc.pending", "طلب التحقق قيد المراجعة.");
+        arabic.put("merchant.pay", "دفع لتاجر");
+        arabic.put("bills.title", "الفواتير والتعبئة");
+        arabic.put("trading.title", "حساب التداول");
+        arabic.put("trading.marketOrder", "أمر سوق");
+        arabic.put("trading.limitOrder", "أمر محدد");
+        arabic.put("loan.title", "قروض صغيرة");
+        arabic.put("loan.apply", "طلب قرض");
+        arabic.put("security.biometricRequired", "مطلوب تأكيد بالبصمة أو الوجه لهذه العملية.");
+        arabic.put("security.passcodeRequired", "أدخل رمز التسليم المؤلف من 6 أرقام.");
+        arabic.put("offline.queued", "تم حفظ العملية بدون إنترنت، وبتتزامن أول ما يرجع الاتصال.");
+        arabic.put("offline.synced", "تمت مزامنة العملية بنجاح.");
+        arabic.put("support.contactBranch", "راجع فرعك للمساعدة.");
+
+        english.forEach((key, value) -> saveTranslation("en", key, value));
+        arabic.forEach((key, value) -> {
+            saveTranslation("ar", key, value);
+            saveTranslation("ar-SY", key, value);
+        });
+    }
+
+    private void saveTranslation(String locale, String key, String value) {
+        if (translationRepository.findByLocaleAndMessageKey(locale, key).isEmpty()) {
+            translationRepository.save(Translation.builder()
+                    .locale(locale)
+                    .messageKey(key)
+                    .messageValue(value)
+                    .build());
+        }
+    }
+
+    private void createBranchCashInventoriesIfNeeded() {
+        branchRepository.findAll().forEach(branch -> {
+            seedBranchCash(branch, "USD", "250000.0000", "25000.0000", "750000.0000");
+            seedBranchCash(branch, "EUR", "100000.0000", "10000.0000", "300000.0000");
+            seedBranchCash(branch, "TL", "2000000.0000", "250000.0000", "5000000.0000");
+            seedBranchCash(branch, "SYP", "500000000.0000", "50000000.0000", "1500000000.0000");
+        });
+    }
+
+    private void seedBranchCash(Branch branch, String currency, String available, String lowThreshold, String highThreshold) {
+        if (branchCashInventoryRepository.findByBranchIdAndCurrency(branch.getId(), currency).isPresent()) {
+            return;
+        }
+        branchCashInventoryRepository.save(BranchCashInventory.builder()
+                .branch(branch)
+                .currency(currency)
+                .availableBalance(new BigDecimal(available))
+                .reservedBalance(BigDecimal.ZERO)
+                .lowCashThreshold(new BigDecimal(lowThreshold))
+                .highCashThreshold(new BigDecimal(highThreshold))
                 .build());
     }
 }

@@ -1,11 +1,18 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
+import com.mycompany.transfersystem.dto.trading.UserTradingNotificationPreferencesDto;
 import com.mycompany.transfersystem.dto.trading.PlaceOrderRequest;
 import com.mycompany.transfersystem.entity.Order;
 import com.mycompany.transfersystem.entity.TradingAccount;
 import com.mycompany.transfersystem.entity.User;
+import com.mycompany.transfersystem.entity.UserTradingNotificationPreferences;
 import com.mycompany.transfersystem.repository.UserRepository;
+import com.mycompany.transfersystem.repository.UserTradingNotificationPreferencesRepository;
+import com.mycompany.transfersystem.service.trading.CorporateTreasuryDashboardService;
 import com.mycompany.transfersystem.service.trading.OrderExecutionService;
+import com.mycompany.transfersystem.service.trading.PortfolioRiskAnalyticsService;
+import com.mycompany.transfersystem.service.trading.TradingRiskProfileService;
 import com.mycompany.transfersystem.util.SecurityUtils;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +22,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/trading")
@@ -26,17 +34,29 @@ public class TradingController {
     private final com.mycompany.transfersystem.repository.OrderRepository orderRepository;
     private final com.mycompany.transfersystem.repository.PositionRepository positionRepository;
     private final UserRepository userRepository;
+    private final TradingRiskProfileService tradingRiskProfileService;
+    private final PortfolioRiskAnalyticsService portfolioRiskAnalyticsService;
+    private final CorporateTreasuryDashboardService corporateTreasuryDashboardService;
+    private final UserTradingNotificationPreferencesRepository tradingNotificationPreferencesRepository;
 
     public TradingController(OrderExecutionService orderExecutionService,
                              com.mycompany.transfersystem.repository.TradingAccountRepository tradingAccountRepository,
                              com.mycompany.transfersystem.repository.OrderRepository orderRepository,
                              com.mycompany.transfersystem.repository.PositionRepository positionRepository,
-                             UserRepository userRepository) {
+                             UserRepository userRepository,
+                             TradingRiskProfileService tradingRiskProfileService,
+                             PortfolioRiskAnalyticsService portfolioRiskAnalyticsService,
+                             CorporateTreasuryDashboardService corporateTreasuryDashboardService,
+                             UserTradingNotificationPreferencesRepository tradingNotificationPreferencesRepository) {
         this.orderExecutionService = orderExecutionService;
         this.tradingAccountRepository = tradingAccountRepository;
         this.orderRepository = orderRepository;
         this.positionRepository = positionRepository;
         this.userRepository = userRepository;
+        this.tradingRiskProfileService = tradingRiskProfileService;
+        this.portfolioRiskAnalyticsService = portfolioRiskAnalyticsService;
+        this.corporateTreasuryDashboardService = corporateTreasuryDashboardService;
+        this.tradingNotificationPreferencesRepository = tradingNotificationPreferencesRepository;
     }
 
     @PostMapping("/account/open")
@@ -54,6 +74,7 @@ public class TradingController {
                 .totalPortfolioValue(java.math.BigDecimal.ZERO)
                 .build();
         account = tradingAccountRepository.save(account);
+        tradingRiskProfileService.getOrCreateDefault(user);
         return ResponseEntity.ok(account);
     }
 
@@ -67,6 +88,7 @@ public class TradingController {
     }
 
     @PostMapping("/orders")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Order> placeOrder(
             @Valid @RequestBody PlaceOrderRequest request,
@@ -95,5 +117,52 @@ public class TradingController {
         TradingAccount account = tradingAccountRepository.findByUser_Id(user.getId())
                 .orElseThrow(() -> new com.mycompany.transfersystem.exception.ResourceNotFoundException("Trading account not found"));
         return ResponseEntity.ok(positionRepository.findByTradingAccount_Id(account.getId()));
+    }
+
+    @GetMapping("/portfolio/risk")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, Object>> portfolioRisk(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = SecurityUtils.resolveUser(userDetails, userRepository);
+        return ResponseEntity.ok(portfolioRiskAnalyticsService.buildRiskSnapshot(user.getId()));
+    }
+
+    @GetMapping("/corporate/treasury-dashboard")
+    @PreAuthorize("hasRole('CORPORATE_ADMIN')")
+    public ResponseEntity<Map<String, Object>> corporateTreasury(@AuthenticationPrincipal UserDetails userDetails) {
+        User user = SecurityUtils.resolveUser(userDetails, userRepository);
+        return ResponseEntity.ok(corporateTreasuryDashboardService.buildDashboard(user.getId()));
+    }
+
+    @GetMapping("/notification-preferences")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserTradingNotificationPreferencesDto> getNotifPrefs(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = SecurityUtils.resolveUser(userDetails, userRepository);
+        UserTradingNotificationPreferences p = tradingNotificationPreferencesRepository.findByUserId(user.getId())
+                .orElse(UserTradingNotificationPreferences.builder()
+                        .userId(user.getId())
+                        .build());
+        UserTradingNotificationPreferencesDto dto = new UserTradingNotificationPreferencesDto();
+        dto.setOrderInApp(p.isOrderInApp());
+        dto.setOrderWhatsApp(p.isOrderWhatsApp());
+        dto.setPriceAlertInApp(p.isPriceAlertInApp());
+        dto.setPriceAlertWhatsApp(p.isPriceAlertWhatsApp());
+        return ResponseEntity.ok(dto);
+    }
+
+    @PutMapping("/notification-preferences")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<UserTradingNotificationPreferencesDto> putNotifPrefs(
+            @RequestBody UserTradingNotificationPreferencesDto body,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        User user = SecurityUtils.resolveUser(userDetails, userRepository);
+        UserTradingNotificationPreferences p = tradingNotificationPreferencesRepository.findByUserId(user.getId())
+                .orElse(UserTradingNotificationPreferences.builder().userId(user.getId()).build());
+        p.setOrderInApp(body.isOrderInApp());
+        p.setOrderWhatsApp(body.isOrderWhatsApp());
+        p.setPriceAlertInApp(body.isPriceAlertInApp());
+        p.setPriceAlertWhatsApp(body.isPriceAlertWhatsApp());
+        tradingNotificationPreferencesRepository.save(p);
+        return ResponseEntity.ok(body);
     }
 }

@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.batch.BatchUploadResponse;
 import com.mycompany.transfersystem.entity.BatchJob;
 import com.mycompany.transfersystem.entity.BatchJobRow;
@@ -89,6 +90,7 @@ public class BatchTransferController {
     }
 
     @PostMapping("/{id}/execute")
+    @RequireIdempotencyKey
     @PreAuthorize("hasRole('MOTHER_BRANCH_ADMIN')")
     public ResponseEntity<Void> execute(@PathVariable Long id) {
         batchExecutionService.executeBatch(id);

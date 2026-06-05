@@ -1,11 +1,11 @@
 package com.mycompany.transfersystem.service;
 
-import com.mycompany.transfersystem.dto.QrGenerationResponse;
 import com.mycompany.transfersystem.entity.Branch;
-import com.mycompany.transfersystem.entity.Transaction;
 import com.mycompany.transfersystem.entity.User;
+import com.mycompany.transfersystem.entity.enums.UserRole;
 import com.mycompany.transfersystem.repository.BranchRepository;
-import com.mycompany.transfersystem.service.notification.WhatsAppNotificationProvider;
+import com.mycompany.transfersystem.repository.UserRepository;
+import com.mycompany.transfersystem.service.notification.NotificationDispatchService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +14,16 @@ import java.util.Optional;
 @Service
 public class NotificationService {
 
+    private static final String OPS_TEMPLATE = "internal.branch.ops";
+
     @Autowired
     private BranchRepository branchRepository;
 
-    @Autowired(required = false)
-    private WhatsAppNotificationProvider whatsAppProvider;
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private NotificationDispatchService notificationDispatchService;
 
     /**
      * Send internal branch alert to a specific branch
@@ -27,53 +32,54 @@ public class NotificationService {
      * @param message The alert message (does NOT contain the release passcode)
      */
     public void sendInternalBranchAlert(Long branchId, String message) {
-        // In a real implementation, this would integrate with:
-        // - Internal messaging system
-        // - Branch notification dashboard
-        // - Real-time alerts
-        // - Email/SMS to branch managers
-        
         Optional<Branch> branch = branchRepository.findById(branchId);
         if (branch.isPresent()) {
-            // Log the internal alert (in real system, this would be sent to branch system)
             System.out.println("INTERNAL BRANCH ALERT to " + branch.get().getName() + ": " + message);
-            
-            // In production, this would:
-            // 1. Send to branch notification system
-            // 2. Update branch dashboard
-            // 3. Notify branch managers via internal channels
+        }
+    }
+
+    /** Branch hotline + all branch managers on file; internal log always. */
+    public void notifyBranchOperation(Long branchId, String title, String detail) {
+        sendInternalBranchAlert(branchId, title + ": " + detail);
+        branchRepository.findById(branchId).ifPresent(branch -> {
+            notificationDispatchService.dispatchBranchOperationalWhatsapp(branch.getPhone(), branchId, title, detail);
+        });
+        for (User mgr : userRepository.findByBranch_IdAndRole(branchId, UserRole.BRANCH_MANAGER)) {
+            if (mgr.getPhone() != null && !mgr.getPhone().isBlank()) {
+                notificationDispatchService.dispatchFinancialWhatsapp(mgr.getId(), mgr.getPhone(), OPS_TEMPLATE, title, detail);
+            }
+        }
+    }
+
+    public void notifyUsersByRole(UserRole role, String title, String detail) {
+        for (User u : userRepository.findByRole(role)) {
+            if (u.getPhone() != null && !u.getPhone().isBlank()) {
+                notificationDispatchService.dispatchFinancialWhatsapp(u.getId(), u.getPhone(), OPS_TEMPLATE, title, detail);
+            }
+        }
+    }
+
+    public void notifyUserPhones(User user, String title, String detail) {
+        if (user == null) {
+            return;
+        }
+        if (user.getPhone() != null && !user.getPhone().isBlank()) {
+            notificationDispatchService.dispatchFinancialWhatsapp(user.getId(), user.getPhone(), OPS_TEMPLATE, title, detail);
         }
     }
 
     /**
      * Send email notification to a user
-     * @param user The user to send email to
-     * @param subject Email subject
-     * @param message Email message (may contain sensitive information like passcode)
      */
     public void sendEmail(User user, String subject, String message) {
-        // In a real implementation, this would integrate with email service
         System.out.println("EMAIL to " + user.getEmail() + " [" + subject + "]: " + message);
-        
-        // In production, this would:
-        // 1. Use email service (SendGrid, AWS SES, etc.)
-        // 2. Queue email for delivery
-        // 3. Handle email delivery status
     }
 
     /**
      * Send SMS notification to a user
-     * @param user The user to send SMS to
-     * @param message SMS message (may contain sensitive information like passcode)
      */
     public void sendSMS(User user, String message) {
-        // In a real implementation, this would integrate with SMS service
         System.out.println("SMS to " + user.getPhone() + ": " + message);
-        
-        // In production, this would:
-        // 1. Use SMS service (Twilio, AWS SNS, etc.)
-        // 2. Queue SMS for delivery
-        // 3. Handle SMS delivery status
     }
 
     /**
@@ -81,19 +87,6 @@ public class NotificationService {
      * @return A 6-digit numeric passcode
      */
     public String generateReleasePasscode() {
-        // Generate a 6-digit numeric passcode
         return String.format("%06d", (int) (Math.random() * 1000000));
-    }
-
-    public void notifyTransactionComplete(Transaction tx) {
-        if (whatsAppProvider != null && tx.getReceiver().getPhone() != null && !tx.getReceiver().getPhone().isBlank()) {
-            whatsAppProvider.sendTransactionReceipt(tx, tx.getReceiver().getPhone());
-        }
-    }
-
-    public void notifyQrReady(Transaction tx, QrGenerationResponse qrData) {
-        if (whatsAppProvider != null && tx.getReceiver().getPhone() != null && !tx.getReceiver().getPhone().isBlank()) {
-            whatsAppProvider.sendQrCode(tx.getReceiver().getPhone(), qrData, tx);
-        }
     }
 }

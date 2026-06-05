@@ -10,6 +10,7 @@ import com.mycompany.transfersystem.repository.*;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +66,7 @@ public class CreditScoringService {
     }
 
     @Scheduled(cron = "0 0 2 * * MON")
+    @SchedulerLock(name = "credit-scoring", lockAtMostFor = "PT45M")
     @Transactional
     public void recalculateAllScores() {
         log.info("Starting weekly credit score recalculation");
@@ -127,7 +129,7 @@ public class CreditScoringService {
         int agePts = walletRepository.findByUser_Id(userId)
                 .map(Wallet::getCreatedAt)
                 .map(instant -> ChronoUnit.MONTHS.between(instant.atZone(ZoneId.systemDefault()), java.time.ZonedDateTime.now()))
-                .map(m -> Math.min(WALLET_AGE_MAX_PTS, (int) m * WALLET_AGE_MULTIPLIER))
+                .map(m -> Math.min(WALLET_AGE_MAX_PTS, (int) (long) m * WALLET_AGE_MULTIPLIER))
                 .orElse(0);
 
         int totalScore = volPts + freqPts + trustPts + repayPts + kycPts + agePts;

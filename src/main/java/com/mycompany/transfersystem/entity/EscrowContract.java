@@ -47,19 +47,22 @@ public class EscrowContract {
     private String conditionType;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "condition_details", columnDefinition = "jsonb")
+    @Column(name = "condition_details")
     private Map<String, Object> conditionDetails;
 
     @Column(name = "release_date")
     private LocalDate releaseDate;
 
     @Column(nullable = false, length = 20)
+    @Builder.Default
     private String status = "ACTIVE";
 
     @Column(name = "daily_fee_rate", nullable = false, precision = 10, scale = 6)
+    @Builder.Default
     private BigDecimal dailyFeeRate = BigDecimal.ZERO;
 
     @Column(name = "total_fees_collected", nullable = false, precision = 20, scale = 4)
+    @Builder.Default
     private BigDecimal totalFeesCollected = BigDecimal.ZERO;
 
     @Column(name = "funded_at")
@@ -72,5 +75,10 @@ public class EscrowContract {
     private Instant expiresAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    private void prePersist() {
+        if (this.createdAt == null) this.createdAt = Instant.now();
+    }
 }

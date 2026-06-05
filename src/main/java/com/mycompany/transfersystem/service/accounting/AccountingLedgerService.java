@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 public class AccountingLedgerService {
@@ -120,6 +121,59 @@ public class AccountingLedgerService {
                 actor);
     }
 
+    @Transactional
+    public void postBalancedEntries(Transaction transaction,
+                                    List<LedgerLine> lines,
+                                    String description,
+                                    User actor) {
+        if (lines == null || lines.isEmpty()) {
+            throw new AccountingImbalanceException("No ledger lines supplied");
+        }
+
+        BigDecimal totalDebits = BigDecimal.ZERO;
+        BigDecimal totalCredits = BigDecimal.ZERO;
+
+        for (LedgerLine line : lines) {
+            if (line.amount() == null || line.amount().compareTo(BigDecimal.ZERO) < 0) {
+                throw new AccountingImbalanceException("Ledger line amount must be positive");
+            }
+            if (line.amount().compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+            if (line.entryType() == EntryType.DEBIT) {
+                totalDebits = totalDebits.add(line.amount());
+            } else {
+                totalCredits = totalCredits.add(line.amount());
+            }
+        }
+
+        if (totalDebits.compareTo(totalCredits) != 0) {
+            throw new AccountingImbalanceException(
+                    "Ledger imbalance before posting: debits=" + totalDebits + " credits=" + totalCredits);
+        }
+
+        for (LedgerLine line : lines) {
+            if (line.amount().compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+            ChartOfAccount account = findOrCreateAccount(line.accountCode(), line.accountType());
+            ledgerRepository.save(LedgerEntry.builder()
+                    .transaction(transaction)
+                    .account(account)
+                    .entryType(line.entryType())
+                    .amount(line.amount())
+                    .currencyCode(line.currency() != null ? line.currency() : "USD")
+                    .description(line.description() != null ? line.description() : description)
+                    .createdBy(actor)
+                    .build());
+        }
+
+        assertLedgerBalance(transaction.getId());
+
+        auditService.log("LEDGER_POSTED", "LedgerEntry", transaction.getId(),
+                description != null ? description : "Balanced ledger entries", actor);
+    }
+
     public void assertLedgerBalance(Long transactionId) {
         BigDecimal totalDebits = ledgerRepository.sumByTransactionAndType(transactionId, EntryType.DEBIT);
         BigDecimal totalCredits = ledgerRepository.sumByTransactionAndType(transactionId, EntryType.CREDIT);
@@ -141,14 +195,26 @@ public class AccountingLedgerService {
     }
 
     private ChartOfAccount findOrCreateAccount(String code) {
+        return findOrCreateAccount(code, AccountType.ASSET);
+    }
+
+    private ChartOfAccount findOrCreateAccount(String code, AccountType accountType) {
         return accountRepository.findByCode(code).orElseGet(() -> {
             log.warn("Auto-creating ledger account for code: {}", code);
             return accountRepository.save(ChartOfAccount.builder()
                     .code(code)
                     .name("Auto: " + code)
-                    .accountType(AccountType.ASSET)
+                    .accountType(accountType != null ? accountType : AccountType.ASSET)
                     .system(true)
                     .build());
         });
+    }
+
+    public record LedgerLine(String accountCode,
+                             EntryType entryType,
+                             BigDecimal amount,
+                             String currency,
+                             AccountType accountType,
+                             String description) {
     }
 }

@@ -5,12 +5,12 @@ import com.mycompany.transfersystem.dto.ScanValidationResponse;
 import com.mycompany.transfersystem.entity.QrToken;
 import com.mycompany.transfersystem.entity.Transaction;
 import com.mycompany.transfersystem.entity.User;
-import com.mycompany.transfersystem.entity.enums.TransactionStatus;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
 import com.mycompany.transfersystem.exception.SecurityViolationException;
 import com.mycompany.transfersystem.repository.QrTokenRepository;
 import com.mycompany.transfersystem.repository.TransactionRepository;
 import com.mycompany.transfersystem.util.QrEncryptionUtil;
+import com.mycompany.transfersystem.service.transfer.PayoutCompletionService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +24,20 @@ public class ScannerValidationService {
     private final AuditService auditService;
     private final TotpService totpService;
     private final QrEncryptionUtil qrEncryptionUtil;
+    private final PayoutCompletionService payoutCompletionService;
 
     public ScannerValidationService(QrTokenRepository qrTokenRepository,
                                    TransactionRepository transactionRepository,
                                    AuditService auditService,
                                    TotpService totpService,
-                                   QrEncryptionUtil qrEncryptionUtil) {
+                                   QrEncryptionUtil qrEncryptionUtil,
+                                   PayoutCompletionService payoutCompletionService) {
         this.qrTokenRepository = qrTokenRepository;
         this.transactionRepository = transactionRepository;
         this.auditService = auditService;
         this.totpService = totpService;
         this.qrEncryptionUtil = qrEncryptionUtil;
+        this.payoutCompletionService = payoutCompletionService;
     }
 
     @Transactional
@@ -75,8 +78,7 @@ public class ScannerValidationService {
         qrToken.setScannedBy(cashier);
         qrTokenRepository.save(qrToken);
 
-        tx.setStatus(TransactionStatus.COMPLETED);
-        transactionRepository.save(tx);
+        Transaction released = payoutCompletionService.completeAfterQrScan(tx, cashier);
 
         auditService.log("QR_SCANNED_SUCCESS", "Transaction", transactionId,
                 "Released by cashier " + cashier.getUsername() + " via QR scan", cashier);
@@ -84,8 +86,8 @@ public class ScannerValidationService {
         return ScanValidationResponse.builder()
                 .success(true)
                 .transactionId(transactionId)
-                .receiverName(tx.getReceiver().getUsername())
-                .amount(tx.getAmount())
+                .receiverName(released.getReceiver().getUsername())
+                .amount(released.getAmount())
                 .message("Transaction released successfully")
                 .build();
     }

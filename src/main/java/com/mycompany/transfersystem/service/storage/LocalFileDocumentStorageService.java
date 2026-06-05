@@ -48,7 +48,7 @@ public class LocalFileDocumentStorageService implements DocumentStorageService {
             Files.write(file, content);
             return applicationId + "/" + docType + "/" + safeName;
         } catch (IOException e) {
-            throw new RuntimeException("Failed to store document", e);
+            throw new com.mycompany.transfersystem.exception.StorageUnavailableException("Failed to store document: " + e.getMessage());
         }
     }
 

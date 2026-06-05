@@ -45,7 +45,7 @@ public class QrEncryptionUtil {
 
             return Base64.getEncoder().encodeToString(byteBuffer.array());
         } catch (Exception e) {
-            throw new RuntimeException("QR encryption failed", e);
+            throw new com.mycompany.transfersystem.exception.QrSignatureInvalidException("QR encryption failed: " + e.getMessage());
         }
     }
 
@@ -73,7 +73,7 @@ public class QrEncryptionUtil {
             byte[] plainBytes = cipher.doFinal(cipherBytes);
             return new String(plainBytes, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw new RuntimeException("QR decryption failed", e);
+            throw new com.mycompany.transfersystem.exception.QrSignatureInvalidException("QR decryption failed: " + e.getMessage());
         }
     }
 }

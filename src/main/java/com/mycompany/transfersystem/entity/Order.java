@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.entity;
 
+import com.mycompany.transfersystem.entity.enums.OrderFailureReason;
 import com.mycompany.transfersystem.entity.enums.OrderSide;
 import com.mycompany.transfersystem.entity.enums.OrderStatus;
 import com.mycompany.transfersystem.entity.enums.OrderType;
@@ -60,6 +61,16 @@ public class Order {
 
     @Column(name = "platform_fee_currency", length = 5)
     private String platformFeeCurrency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "failure_reason", length = 40)
+    private OrderFailureReason failureReason;
+
+    @Column(name = "failure_detail", columnDefinition = "TEXT")
+    private String failureDetail;
+
+    @Column(name = "reference_market_price", precision = 20, scale = 4)
+    private BigDecimal referenceMarketPrice;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

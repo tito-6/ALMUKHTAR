@@ -6,12 +6,15 @@ import com.mycompany.transfersystem.entity.User;
 import com.mycompany.transfersystem.entity.Wallet;
 import com.mycompany.transfersystem.entity.enums.WalletTransactionType;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
+import com.mycompany.transfersystem.config.NotificationThresholdProperties;
 import com.mycompany.transfersystem.repository.MerchantRepository;
 import com.mycompany.transfersystem.repository.MerchantTransactionRepository;
 import com.mycompany.transfersystem.repository.WalletRepository;
 import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.revenue.PlatformRevenueService;
 import com.mycompany.transfersystem.service.wallet.WalletService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,8 @@ public class MerchantPaymentService {
     private final MerchantTransactionRepository transactionRepository;
     private final PlatformRevenueService platformRevenueService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final NotificationThresholdProperties notificationThresholdProperties;
 
     public MerchantPaymentService(MerchantRepository merchantRepository,
                                   MerchantOnboardingService merchantOnboardingService,
@@ -37,7 +42,9 @@ public class MerchantPaymentService {
                                   WalletRepository walletRepository,
                                   MerchantTransactionRepository transactionRepository,
                                   PlatformRevenueService platformRevenueService,
-                                  AuditService auditService) {
+                                  AuditService auditService,
+                                  ApplicationEventPublisher applicationEventPublisher,
+                                  NotificationThresholdProperties notificationThresholdProperties) {
         this.merchantRepository = merchantRepository;
         this.merchantOnboardingService = merchantOnboardingService;
         this.walletService = walletService;
@@ -45,6 +52,8 @@ public class MerchantPaymentService {
         this.transactionRepository = transactionRepository;
         this.platformRevenueService = platformRevenueService;
         this.auditService = auditService;
+        this.applicationEventPublisher = applicationEventPublisher;
+        this.notificationThresholdProperties = notificationThresholdProperties;
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE)
@@ -88,6 +97,20 @@ public class MerchantPaymentService {
         tx = transactionRepository.save(tx);
         auditService.log("MERCHANT_PAYMENT_PROCESSED", "MERCHANT_TRANSACTION", tx.getId(),
                 "amount=" + amount + " merchantId=" + merchantId, payer);
+        boolean high = notificationThresholdProperties.getMerchantPerTradePlatformNotify() != null
+                && amount.compareTo(notificationThresholdProperties.getMerchantPerTradePlatformNotify()) >= 0;
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.MerchantPaymentCompletedEvent(
+                tx.getId(),
+                payer.getId(),
+                merchant.getOwnerUser().getId(),
+                merchantId,
+                merchant.getBusinessName(),
+                amount,
+                currency,
+                platformFee,
+                merchantNet,
+                "MERCHTX-" + tx.getId(),
+                high));
         return tx;
     }
 

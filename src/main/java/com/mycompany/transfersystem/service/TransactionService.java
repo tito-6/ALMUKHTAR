@@ -2,21 +2,31 @@ package com.mycompany.transfersystem.service;
 
 import com.mycompany.transfersystem.dto.*;
 import com.mycompany.transfersystem.entity.*;
+import com.mycompany.transfersystem.entity.enums.AccountType;
+import com.mycompany.transfersystem.entity.enums.EntryType;
 import com.mycompany.transfersystem.entity.enums.FundStatus;
 import com.mycompany.transfersystem.entity.enums.TransactionStatus;
+import com.mycompany.transfersystem.entity.enums.UserRole;
 import com.mycompany.transfersystem.exception.InsufficientFundsException;
 import com.mycompany.transfersystem.exception.InvalidTransactionException;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
 import com.mycompany.transfersystem.repository.*;
+import com.mycompany.transfersystem.config.NotificationThresholdProperties;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
+import com.mycompany.transfersystem.service.accounting.AccountingLedgerService;
+import com.mycompany.transfersystem.service.liquidity.BranchCashService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,8 +56,17 @@ public class TransactionService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private NotificationThresholdProperties notificationThresholdProperties;
+
     @Autowired(required = false)
     private com.mycompany.transfersystem.service.accounting.AccountingLedgerService accountingLedgerService;
+
+    @Autowired
+    private BranchCashService branchCashService;
+
+    @Autowired
+    private ApplicationEventPublisher applicationEventPublisher;
 
     public List<TransactionResponse> getAllTransactions() {
         return transactionRepository.findAll().stream()
@@ -62,20 +81,17 @@ public class TransactionService {
     }
 
     /**
-     * Get transaction record with security filtering based on user's branch
-     * Branch B employees cannot see the release passcode
+     * Transaction record with passcode visibility derived from the authenticated actor's branch and role.
      */
-    public TransactionRecordDTO getTransactionRecordById(Long id, Long requestingBranchId) {
+    public TransactionRecordDTO getTransactionRecordForActor(Long id, User actor) {
+        Objects.requireNonNull(actor, "actor");
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
-        
-        // Get branches for this transaction (receiver branch may be null)
+
         Branch receiverBranch = transaction.getReceiver().getBranch() != null
                 ? branchRepository.findById(transaction.getReceiver().getBranch().getId()).orElse(null)
                 : null;
-        
-        // Create a basic transaction record (we'll need to reconstruct the full record)
-        // For now, create a simplified version
+
         TransactionRecordDTO record = new TransactionRecordDTO();
         record.setId(transaction.getId());
         record.setSenderId(transaction.getSender().getId());
@@ -85,16 +101,58 @@ public class TransactionService {
         record.setStatus(transaction.getStatus());
         record.setCreatedAt(transaction.getCreatedAt());
         record.setUpdatedAt(LocalDateTime.now());
-        
-        // Security: Hide passcode from receiving branch employees
-        if (receiverBranch != null && requestingBranchId != null && requestingBranchId.equals(receiverBranch.getId())) {
-            // Branch B employee - hide the passcode
+
+        if (shouldHideReleasePasscode(receiverBranch, actor)) {
             record.setReleasePasscode(null);
         } else {
-            // Sender branch or admin - show the passcode
             record.setReleasePasscode(transaction.getReleasePasscode());
         }
-        
+
+        return record;
+    }
+
+    private boolean shouldHideReleasePasscode(Branch receiverBranch, User actor) {
+        if (receiverBranch == null) {
+            return false;
+        }
+        if (actor.getRole() == UserRole.AUDITOR) {
+            return true;
+        }
+        if (actor.getRole() == UserRole.PLATFORM_OWNER
+                || actor.getRole() == UserRole.SUPER_ADMIN
+                || actor.getRole() == UserRole.MOTHER_BRANCH_ADMIN) {
+            return false;
+        }
+        if (actor.getBranch() == null) {
+            return false;
+        }
+        return actor.getBranch().getId().equals(receiverBranch.getId());
+    }
+
+    /**
+     * @deprecated Prefer {@link #getTransactionRecordForActor(Long, User)} with a resolved {@link User}.
+     */
+    @Deprecated
+    public TransactionRecordDTO getTransactionRecordById(Long id, Long requestingBranchId) {
+        Transaction transaction = transactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
+        Branch receiverBranch = transaction.getReceiver().getBranch() != null
+                ? branchRepository.findById(transaction.getReceiver().getBranch().getId()).orElse(null)
+                : null;
+        TransactionRecordDTO record = new TransactionRecordDTO();
+        record.setId(transaction.getId());
+        record.setSenderId(transaction.getSender().getId());
+        record.setReceiverId(transaction.getReceiver().getId());
+        record.setFundId(transaction.getFund().getId());
+        record.setGrossAmount(transaction.getAmount());
+        record.setStatus(transaction.getStatus());
+        record.setCreatedAt(transaction.getCreatedAt());
+        record.setUpdatedAt(LocalDateTime.now());
+        if (receiverBranch != null && requestingBranchId != null && requestingBranchId.equals(receiverBranch.getId())) {
+            record.setReleasePasscode(null);
+        } else {
+            record.setReleasePasscode(transaction.getReleasePasscode());
+        }
         return record;
     }
 
@@ -111,7 +169,7 @@ public class TransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Receiver not found with id: " + request.getReceiverId()));
 
         // Validate fund
-        Fund fund = fundRepository.findById(request.getFundId())
+        Fund fund = fundRepository.findByIdForUpdate(request.getFundId())
                 .orElseThrow(() -> new ResourceNotFoundException("Fund not found with id: " + request.getFundId()));
 
         // Validate fund status
@@ -150,87 +208,124 @@ public class TransactionService {
         // Get exchange rate
         BigDecimal exchangeRate = exchangeRateService.getRate(request.getSourceCurrency(), request.getDestinationCurrency());
 
-        // Calculate total amount to deduct (principal + total fees)
-        BigDecimal totalAmountToDeduct = request.getAmount().add(feeBreakdown.getTotalFee());
+        BigDecimal usdEquivalent = feeBreakdown.getUsdEquivalent().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalFees = feeBreakdown.getTotalFee().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalSettlementDebit = usdEquivalent.add(totalFees).setScale(2, RoundingMode.HALF_UP);
 
-        // Validate sufficient balance in sender's fund
-        if (fund.getBalance().compareTo(totalAmountToDeduct) < 0) {
+        // Validate sufficient balance in the source settlement fund. Comprehensive
+        // transfer settlement is maintained in USD-equivalent branch accounting.
+        if (fund.getBalance().compareTo(totalSettlementDebit) < 0) {
             throw new InsufficientFundsException("Insufficient balance in fund: " + fund.getName() + 
-                    ". Required: " + totalAmountToDeduct + ", Available: " + fund.getBalance());
+                    ". Required: " + totalSettlementDebit + ", Available: " + fund.getBalance());
         }
 
         // Get platform fund (main admin branch fund)
         Fund platformFund = getOrCreatePlatformFund(mainAdminBranch);
-        
-        // Get sender branch fund
-        Fund senderBranchFund = getOrCreateBranchFund(senderBranch);
-        
+
         // Get receiver branch fund
         Fund receiverBranchFund = getOrCreateBranchFund(receiverBranch);
 
         // Execute atomic transaction
         try {
-            // 1. Deduct total amount from sender's fund
-            fund.setBalance(fund.getBalance().subtract(totalAmountToDeduct));
+            // 1. Debit the source branch settlement fund once for principal plus
+            // every fee. This preserves the Sender Branch Pays All invariant.
+            fund.setBalance(fund.getBalance().subtract(totalSettlementDebit));
             fundRepository.save(fund);
 
-            // 2. Calculate total amount to debit from sender branch (USD equivalent + ALL fees)
-            BigDecimal usdEquivalent = feeBreakdown.getUsdEquivalent();
-            BigDecimal totalFees = feeBreakdown.getTotalFee();
-            BigDecimal totalBranchADebit = usdEquivalent.add(totalFees);
-            
-            // 3. Debit sender branch fund for total amount (USD equivalent + ALL fees)
-            // This is because the sender branch collects money from the client
-            senderBranchFund.setBalance(senderBranchFund.getBalance().subtract(totalBranchADebit));
-            fundRepository.save(senderBranchFund);
-
-            // 4. Credit platform fund with platform fees
+            // 2. Credit platform fund with platform fees
             BigDecimal platformFees = feeBreakdown.getPlatformBaseFee().add(feeBreakdown.getPlatformExchangeProfit());
             platformFund.setBalance(platformFund.getBalance().add(platformFees));
             fundRepository.save(platformFund);
 
-            // 5. Credit receiver branch fund with USD equivalent (receiving fee is covered by sender branch)
-            // The receiver branch gets the full USD equivalent since sender branch paid all fees
+            // 3. Credit receiver branch with the full principal. Receiving fee is
+            // paid by the sender side and tracked as fee revenue in the ledger,
+            // not deducted from the payout principal.
             receiverBranchFund.setBalance(receiverBranchFund.getBalance().add(usdEquivalent));
             fundRepository.save(receiverBranchFund);
 
-            // 6. Define net principal for transaction record (USD equivalent)
+            // 4. Define net principal for transaction record (USD equivalent)
             BigDecimal netPrincipal = usdEquivalent;
 
-            // 7. Generate release passcode
+            // 5. Generate release passcode
             String releasePasscode = notificationService.generateReleasePasscode();
 
-            // 7. Create transaction record
+            // 6. Create transaction record
             Transaction transaction = new Transaction();
             transaction.setSender(sender);
             transaction.setReceiver(receiver);
             transaction.setFund(fund);
             transaction.setAmount(request.getAmount());
-            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setStatus(TransactionStatus.READY_FOR_PICKUP);
             transaction.setReleasePasscode(releasePasscode);
+            transaction.setCurrencyCode(request.getDestinationCurrency());
             Transaction savedTransaction = transactionRepository.save(transaction);
 
-            // 8. Send notifications
-            sendTransactionNotifications(savedTransaction, sender, receiver, senderBranch, receiverBranch, releasePasscode);
-            notificationService.notifyTransactionComplete(savedTransaction);
+            // 7. Reserve physical payout liquidity at the receiver branch before
+            // the receiver is notified. This prevents overcommitting scarce cash.
+            User currentUser = resolveActorOrSystem();
+            branchCashService.reservePayout(savedTransaction, receiverBranch,
+                    request.getDestinationCurrency(), netPrincipal, currentUser);
 
-            // 9. Log the transaction (if authentication is available)
-            try {
-                User currentUser = getCurrentUser();
-                auditService.log("EXECUTE_TRANSFER", currentUser, "Transaction", savedTransaction.getId());
-                if (accountingLedgerService != null) {
-                    String debitCode = "RECEIVER-" + receiver.getId();
-                    String creditCode = "FUND-" + fund.getId();
-                    accountingLedgerService.postDoubleEntry(savedTransaction, debitCode, creditCode,
-                            feeBreakdown.getUsdEquivalent(), "USD", "Transfer " + savedTransaction.getId(), currentUser);
-                }
-            } catch (Exception e) {
-                // Skip audit logging if no authentication context (e.g., in tests)
+            boolean highValue = request.getAmount().compareTo(notificationThresholdProperties.getTransferHighValue()) >= 0;
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferCreatedEvent(
+                    savedTransaction.getId(),
+                    sender.getId(),
+                    receiver.getId(),
+                    savedTransaction.getAmount(),
+                    request.getDestinationCurrency(),
+                    totalFees,
+                    request.getSenderBranchId(),
+                    request.getReceiverBranchId(),
+                    "READY_FOR_PICKUP",
+                    false,
+                    true,
+                    highValue));
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferReadyForPickupEvent(
+                    savedTransaction.getId(),
+                    sender.getId(),
+                    receiver.getId(),
+                    savedTransaction.getAmount(),
+                    request.getDestinationCurrency(),
+                    totalFees,
+                    request.getSenderBranchId(),
+                    request.getReceiverBranchId(),
+                    highValue));
+
+            String branchAlert = "Transaction ID: " + savedTransaction.getId()
+                    + " — Sender Branch: " + senderBranch.getName()
+                    + " — Receiver: " + receiver.getUsername()
+                    + " — Amount: " + request.getAmount()
+                    + " — Currency: " + request.getDestinationCurrency()
+                    + " — Status: READY_FOR_PICKUP";
+            notificationService.sendInternalBranchAlert(receiverBranch.getId(), branchAlert);
+            notificationService.sendEmail(sender, "Money transfer initiated — ready for receiver pickup",
+                    "Transaction ID: " + savedTransaction.getId()
+                            + ". Amount " + request.getAmount() + " " + request.getDestinationCurrency()
+                            + ". Release Passcode: " + releasePasscode
+                            + ". Receiver collects at branch " + receiverBranch.getName() + ".");
+            notificationService.sendSMS(sender,
+                    "ID: " + savedTransaction.getId() + " Passcode: " + releasePasscode);
+
+            // 8. Log the transaction (if authentication is available)
+            auditService.log("EXECUTE_TRANSFER", currentUser, "Transaction", savedTransaction.getId());
+            if (accountingLedgerService != null) {
+                accountingLedgerService.postBalancedEntries(savedTransaction, List.of(
+                        ledgerLine("SRC_CASH_" + senderBranch.getId(), EntryType.DEBIT, totalSettlementDebit, AccountType.ASSET,
+                                "Source branch pays principal and all fees"),
+                        ledgerLine("DST_PAY_" + receiverBranch.getId(), EntryType.CREDIT, usdEquivalent, AccountType.LIABILITY,
+                                "Destination branch clean principal payout"),
+                        ledgerLine("PLAT_REV", EntryType.CREDIT, platformFees, AccountType.REVENUE,
+                                "Platform base fee and exchange spread"),
+                        ledgerLine("SND_FEE_" + senderBranch.getId(), EntryType.CREDIT, feeBreakdown.getSendingBranchFee(), AccountType.REVENUE,
+                                "Sending branch fee revenue"),
+                        ledgerLine("RCV_FEE_" + receiverBranch.getId(), EntryType.CREDIT, feeBreakdown.getReceivingBranchFee(), AccountType.REVENUE,
+                                "Receiving branch fee revenue")
+                ), "Sender Branch Pays All transfer " + savedTransaction.getId(), currentUser);
             }
 
             // 10. Create comprehensive transaction record
             return createTransactionRecord(savedTransaction, request, feeBreakdown, exchangeRate, 
-                    senderBranch, receiverBranch, platformFees, netPrincipal);
+                    senderBranch, receiverBranch, platformFees, netPrincipal, totalSettlementDebit);
 
         } catch (Exception e) {
             throw new InvalidTransactionException("Transaction failed: " + e.getMessage());
@@ -283,6 +378,31 @@ public class TransactionService {
             // Update transaction status to COMPLETED
             savedTransaction.setStatus(TransactionStatus.COMPLETED);
             savedTransaction = transactionRepository.save(savedTransaction);
+            boolean highValue = request.getAmount().compareTo(notificationThresholdProperties.getTransferHighValue()) >= 0;
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferCreatedEvent(
+                    savedTransaction.getId(),
+                    sender.getId(),
+                    receiver.getId(),
+                    savedTransaction.getAmount(),
+                    "USD",
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    "COMPLETED",
+                    true,
+                    false,
+                    highValue));
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferCompletedEvent(
+                    savedTransaction.getId(),
+                    sender.getId(),
+                    receiver.getId(),
+                    savedTransaction.getAmount(),
+                    "USD",
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    false,
+                    highValue));
 
             // Log the transaction and post to ledger
             User currentUser = getCurrentUser();
@@ -297,6 +417,11 @@ public class TransactionService {
             // If something goes wrong, mark transaction as FAILED
             savedTransaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(savedTransaction);
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferFailedEvent(
+                    savedTransaction.getId(),
+                    sender.getId(),
+                    receiver.getId(),
+                    "PROCESSING_ERROR"));
             throw new InvalidTransactionException("Transaction failed: " + e.getMessage());
         }
 
@@ -342,6 +467,11 @@ public class TransactionService {
         transaction.setCurrencyCode("USD");
         Transaction savedTransaction = transactionRepository.save(transaction);
 
+        Branch payoutBranch = receiver.getBranch();
+        if (payoutBranch != null) {
+            branchCashService.reservePayout(savedTransaction, payoutBranch, "USD", request.getAmount(), resolveActorOrSystem());
+        }
+
         fund.setBalance(fund.getBalance().subtract(request.getAmount()));
         fundRepository.save(fund);
 
@@ -351,6 +481,23 @@ public class TransactionService {
         } catch (Exception e) {
             // Skip if no auth context
         }
+
+        boolean highValue = request.getAmount().compareTo(notificationThresholdProperties.getTransferHighValue()) >= 0;
+        Long senderBranchId = sender.getBranch() != null ? sender.getBranch().getId() : null;
+        Long receiverBranchId = payoutBranch != null ? payoutBranch.getId() : null;
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.TransferCreatedEvent(
+                savedTransaction.getId(),
+                sender.getId(),
+                receiver.getId(),
+                request.getAmount(),
+                "USD",
+                BigDecimal.ZERO,
+                senderBranchId,
+                receiverBranchId,
+                "PENDING",
+                false,
+                true,
+                highValue));
 
         return convertToResponse(savedTransaction);
     }
@@ -383,11 +530,28 @@ public class TransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Current user not found"));
     }
 
+    private User resolveActorOrSystem() {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.isAuthenticated() && authentication.getName() != null) {
+                return userRepository.findByUsername(authentication.getName()).orElseGet(this::getSystemUser);
+            }
+        } catch (Exception ignored) {
+            // Fall through to SYSTEM for tests, schedulers, and internal calls.
+        }
+        return getSystemUser();
+    }
+
+    private User getSystemUser() {
+        return userRepository.findByUsername("SYSTEM")
+                .orElseThrow(() -> new IllegalStateException("SYSTEM user must exist for audit logging"));
+    }
+
     /**
      * Get or create platform fund for main admin branch
      */
     private Fund getOrCreatePlatformFund(Branch mainAdminBranch) {
-        return fundRepository.findByName("Platform Fund")
+        return fundRepository.findByNameForUpdate("Platform Fund")
                 .orElseGet(() -> {
                     Fund platformFund = new Fund();
                     platformFund.setName("Platform Fund");
@@ -402,7 +566,7 @@ public class TransactionService {
      */
     private Fund getOrCreateBranchFund(Branch branch) {
         String fundName = branch.getName() + " Fund";
-        return fundRepository.findByName(fundName)
+        return fundRepository.findByNameForUpdate(fundName)
                 .orElseGet(() -> {
                     Fund branchFund = new Fund();
                     branchFund.setName(fundName);
@@ -422,7 +586,8 @@ public class TransactionService {
                                                         Branch senderBranch,
                                                         Branch receiverBranch,
                                                         BigDecimal platformFees,
-                                                        BigDecimal netPrincipal) {
+                                                        BigDecimal netPrincipal,
+                                                        BigDecimal totalSettlementDebit) {
         
         TransactionRecordDTO record = new TransactionRecordDTO();
         record.setId(transaction.getId());
@@ -460,8 +625,8 @@ public class TransactionService {
         
         // Fund routing information
         record.setPlatformFundCredit(platformFees);
-        record.setSenderBranchFundCredit(feeBreakdown.getTotalFee().negate()); // Negative because sender branch pays all fees
-        record.setReceiverBranchFundCredit(feeBreakdown.getUsdEquivalent()); // Full USD equivalent
+        record.setSenderBranchFundCredit(totalSettlementDebit.negate()); // Negative because sender branch pays all costs
+        record.setReceiverBranchFundCredit(feeBreakdown.getUsdEquivalent()); // Full clean principal
         record.setInterBranchDebt(feeBreakdown.getUsdEquivalent()); // USD equivalent transferred between branches
         
         // Security information
@@ -470,45 +635,21 @@ public class TransactionService {
         return record;
     }
 
-    /**
-     * Send notifications for a completed transaction
-     */
-    private void sendTransactionNotifications(Transaction transaction, User sender, User receiver, 
-                                            Branch senderBranch, Branch receiverBranch, String releasePasscode) {
-        
-        // 1. Send internal branch alert to receiving branch (Branch B)
-        // This message contains transaction details but NO PASSCODE
-        String branchAlertMessage = String.format(
-            "New money transfer received - Transaction ID: %d, " +
-            "Sender Branch: %s, Receiver: %s (%s), Amount: %s. " +
-            "Please prepare for client pickup.",
-            transaction.getId(),
-            senderBranch.getName(),
-            receiver.getUsername(),
-            receiver.getPhone() != null ? receiver.getPhone() : receiver.getEmail(),
-            transaction.getAmount()
-        );
-        notificationService.sendInternalBranchAlert(receiverBranch.getId(), branchAlertMessage);
+    private AccountingLedgerService.LedgerLine ledgerLine(String code,
+                                                          EntryType entryType,
+                                                          BigDecimal amount,
+                                                          AccountType accountType,
+                                                          String description) {
+        return new AccountingLedgerService.LedgerLine(
+                truncateAccountCode(code),
+                entryType,
+                amount.setScale(2, RoundingMode.HALF_UP),
+                "USD",
+                accountType,
+                description);
+    }
 
-        // 2. Send email to sender with release passcode
-        String senderEmailMessage = String.format(
-            "Your money transfer has been processed successfully. " +
-            "Transaction ID: %d, Amount: %s, Receiver: %s. " +
-            "Release Passcode: %s. Please provide this passcode to the receiver for pickup.",
-            transaction.getId(),
-            transaction.getAmount(),
-            receiver.getUsername(),
-            releasePasscode
-        );
-        notificationService.sendEmail(sender, "Money Transfer Processed", senderEmailMessage);
-
-        // 3. Send SMS to sender with release passcode
-        String senderSMSMessage = String.format(
-            "Transfer processed. ID: %d, Amount: %s. Passcode: %s",
-            transaction.getId(),
-            transaction.getAmount(),
-            releasePasscode
-        );
-        notificationService.sendSMS(sender, senderSMSMessage);
+    private String truncateAccountCode(String code) {
+        return code.length() <= 20 ? code : code.substring(0, 20);
     }
 }

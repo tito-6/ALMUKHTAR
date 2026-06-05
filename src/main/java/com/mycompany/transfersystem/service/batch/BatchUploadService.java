@@ -4,10 +4,12 @@ import com.mycompany.transfersystem.entity.BatchJob;
 import com.mycompany.transfersystem.entity.BatchJobRow;
 import com.mycompany.transfersystem.entity.User;
 import com.mycompany.transfersystem.entity.Wallet;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
 import com.mycompany.transfersystem.repository.BatchJobRepository;
 import com.mycompany.transfersystem.repository.BatchJobRowRepository;
 import com.mycompany.transfersystem.repository.WalletRepository;
 import com.mycompany.transfersystem.service.AuditService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,17 +29,20 @@ public class BatchUploadService {
     private final BatchValidationService batchValidationService;
     private final WalletRepository walletRepository;
     private final AuditService auditService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public BatchUploadService(BatchJobRepository batchJobRepository,
                               BatchJobRowRepository batchJobRowRepository,
                               BatchValidationService batchValidationService,
                               WalletRepository walletRepository,
-                              AuditService auditService) {
+                              AuditService auditService,
+                              ApplicationEventPublisher applicationEventPublisher) {
         this.batchJobRepository = batchJobRepository;
         this.batchJobRowRepository = batchJobRowRepository;
         this.batchValidationService = batchValidationService;
         this.walletRepository = walletRepository;
         this.auditService = auditService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional
@@ -125,6 +130,8 @@ public class BatchUploadService {
             batchJobRowRepository.save(row);
         }
         auditService.log("BATCH_JOB_SUBMITTED", "BATCH_JOB", job.getId(), "rows=" + rows.size() + " total=" + totalUsd, submitter);
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BatchJobSubmittedEvent(
+                job.getId(), submitter.getId(), rows.size(), totalUsd, true));
         return com.mycompany.transfersystem.dto.batch.BatchUploadResponse.builder()
                 .jobId(job.getId())
                 .totalRows(rows.size())

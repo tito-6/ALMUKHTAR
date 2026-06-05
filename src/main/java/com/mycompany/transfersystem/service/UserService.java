@@ -4,6 +4,9 @@ import com.mycompany.transfersystem.dto.UserRequest;
 import com.mycompany.transfersystem.dto.UserResponse;
 import com.mycompany.transfersystem.entity.Fund;
 import com.mycompany.transfersystem.entity.User;
+import com.mycompany.transfersystem.exception.ApplicationAlreadyExistsException;
+import com.mycompany.transfersystem.exception.ResourceNotFoundException;
+import com.mycompany.transfersystem.exception.UserNotFoundException;
 import com.mycompany.transfersystem.repository.FundRepository;
 import com.mycompany.transfersystem.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +44,7 @@ public class UserService {
 
     public UserResponse getUserById(Long id) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
         return convertToResponse(user);
     }
 
@@ -53,15 +56,13 @@ public class UserService {
     }
 
     public UserResponse createUser(UserRequest request) {
-        // Validate fund exists if fundId is provided
         if (request.getFundId() != null) {
             fundRepository.findById(request.getFundId())
-                    .orElseThrow(() -> new RuntimeException("Fund not found with id: " + request.getFundId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Fund not found with id: " + request.getFundId()));
         }
 
-        // Check if username already exists
         if (userRepository.findByUsername(request.getUsername()).isPresent()) {
-            throw new RuntimeException("Username already exists: " + request.getUsername());
+            throw new ApplicationAlreadyExistsException("Username already exists: " + request.getUsername());
         }
 
         User user = new User();
@@ -75,7 +76,7 @@ public class UserService {
         // Log the action
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         User currentUser = userRepository.findByUsername(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Current user not found"));
+                .orElseThrow(() -> new UserNotFoundException("Current user not found"));
         auditService.log("CREATE_USER", currentUser, "User", savedUser.getId());
 
         return convertToResponse(savedUser);
@@ -83,12 +84,11 @@ public class UserService {
 
     public UserResponse updateUser(Long id, UserRequest request) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
-        // Validate fund exists if fundId is provided
         if (request.getFundId() != null) {
             fundRepository.findById(request.getFundId())
-                    .orElseThrow(() -> new RuntimeException("Fund not found with id: " + request.getFundId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Fund not found with id: " + request.getFundId()));
         }
 
         user.setUsername(request.getUsername());
@@ -103,7 +103,7 @@ public class UserService {
         // Log the action
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         User currentUser = userRepository.findByUsername(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Current user not found"));
+                .orElseThrow(() -> new UserNotFoundException("Current user not found"));
         auditService.log("UPDATE_USER", currentUser, "User", updatedUser.getId());
 
         return convertToResponse(updatedUser);
@@ -111,12 +111,11 @@ public class UserService {
 
     public void deleteUser(Long id) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
-        // Log the action before deletion
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         User currentUser = userRepository.findByUsername(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Current user not found"));
+                .orElseThrow(() -> new UserNotFoundException("Current user not found"));
         auditService.log("DELETE_USER", currentUser, "User", user.getId());
 
         userRepository.delete(user);

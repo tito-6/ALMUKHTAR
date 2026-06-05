@@ -2,12 +2,17 @@ package com.mycompany.transfersystem.service.wallet;
 
 import com.mycompany.transfersystem.entity.*;
 import com.mycompany.transfersystem.entity.enums.WalletTransactionType;
+import com.mycompany.transfersystem.exception.InsufficientWalletBalanceException;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
+import com.mycompany.transfersystem.exception.WalletFrozenException;
+import com.mycompany.transfersystem.exception.WalletNotFoundException;
 import com.mycompany.transfersystem.repository.*;
+import com.mycompany.transfersystem.event.WalletCreditedEvent;
 import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.CurrencyConversionService;
 import com.mycompany.transfersystem.service.accounting.AccountingLedgerService;
 import com.mycompany.transfersystem.entity.enums.CommissionScope;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +31,7 @@ public class WalletService {
     private final BranchRepository branchRepository;
     private final AccountingLedgerService accountingLedgerService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public WalletService(WalletRepository walletRepository,
                          WalletBalanceRepository walletBalanceRepository,
@@ -34,7 +40,8 @@ public class WalletService {
                          CommissionRateRepository commissionRateRepository,
                          BranchRepository branchRepository,
                          AccountingLedgerService accountingLedgerService,
-                         AuditService auditService) {
+                         AuditService auditService,
+                         ApplicationEventPublisher applicationEventPublisher) {
         this.walletRepository = walletRepository;
         this.walletBalanceRepository = walletBalanceRepository;
         this.walletTransactionRepository = walletTransactionRepository;
@@ -43,12 +50,13 @@ public class WalletService {
         this.branchRepository = branchRepository;
         this.accountingLedgerService = accountingLedgerService;
         this.auditService = auditService;
+        this.eventPublisher = applicationEventPublisher;
     }
 
     @Transactional(readOnly = true)
     public Wallet getWalletByUserId(Long userId) {
         return walletRepository.findByUser_Id(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found for user"));
+                .orElseThrow(() -> new WalletNotFoundException("Wallet not found for user " + userId));
     }
 
     @Transactional(readOnly = true)
@@ -60,23 +68,23 @@ public class WalletService {
     public void exchangeCurrency(Long walletId, String fromCurrency, String toCurrency,
                                   BigDecimal amount, User actor) {
         Wallet wallet = walletRepository.findById(walletId)
-                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found"));
+                .orElseThrow(() -> new WalletNotFoundException("Wallet not found: " + walletId));
         if (!wallet.getUser().getId().equals(actor.getId())) {
             throw new SecurityException("Not your wallet");
         }
 
         WalletBalance fromBalance = walletBalanceRepository.findByWalletIdAndCurrencyCodeForUpdate(walletId, fromCurrency)
-                .orElseThrow(() -> new ResourceNotFoundException("Balance not found for " + fromCurrency));
+                .orElseThrow(() -> new WalletNotFoundException("Balance not found for " + fromCurrency));
 
         if (fromBalance.getAvailableBalance().compareTo(amount) < 0) {
-            throw new IllegalStateException("Insufficient balance");
+            throw new InsufficientWalletBalanceException("Insufficient balance in " + fromCurrency);
         }
 
         BigDecimal platformFee = getWalletExchangeFee(amount, fromCurrency);
         BigDecimal totalDebit = amount.add(platformFee);
 
         if (fromBalance.getAvailableBalance().compareTo(totalDebit) < 0) {
-            throw new IllegalStateException("Insufficient balance for amount + fee");
+            throw new InsufficientWalletBalanceException("Insufficient balance for amount + fee in " + fromCurrency);
         }
 
         BigDecimal convertedAmount = currencyConversionService.convertCurrency(amount, fromCurrency, toCurrency);
@@ -169,15 +177,18 @@ public class WalletService {
             throw new IllegalArgumentException("Debit amount must be positive");
         }
         Wallet wallet = walletRepository.findByIdForUpdate(walletId)
-                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found"));
+                .orElseThrow(() -> new WalletNotFoundException("Wallet not found: " + walletId));
+        if (wallet.getStatus() == com.mycompany.transfersystem.entity.enums.WalletStatus.FROZEN) {
+            throw new WalletFrozenException("Wallet " + walletId + " is frozen");
+        }
         if (wallet.getStatus() != com.mycompany.transfersystem.entity.enums.WalletStatus.ACTIVE) {
-            throw new IllegalStateException("Wallet is not active for debit: " + wallet.getStatus());
+            throw new WalletFrozenException("Wallet is not active for debit: " + wallet.getStatus());
         }
         WalletBalance balance = walletBalanceRepository.findByWalletIdAndCurrencyCodeForUpdate(walletId, currency)
-                .orElseThrow(() -> new ResourceNotFoundException("Balance not found for " + currency));
+                .orElseThrow(() -> new WalletNotFoundException("Balance not found for " + currency));
         BigDecimal available = balance.getAvailableBalance();
         if (available.compareTo(amount) < 0) {
-            throw new IllegalStateException("Insufficient balance: required " + amount + ", available " + available);
+            throw new InsufficientWalletBalanceException("Insufficient balance: required " + amount + ", available " + available);
         }
         balance.setAvailableBalance(available.subtract(amount));
         walletBalanceRepository.save(balance);
@@ -224,7 +235,14 @@ public class WalletService {
                 .referenceId(referenceId != null ? referenceId : "CR-" + System.currentTimeMillis())
                 .description(description)
                 .build();
-        return walletTransactionRepository.save(tx);
+        WalletTransaction saved = walletTransactionRepository.save(tx);
+        eventPublisher.publishEvent(new WalletCreditedEvent(
+                wallet.getId(),
+                wallet.getUser() != null ? wallet.getUser().getId() : null,
+                currency,
+                amount,
+                saved.getReferenceId()));
+        return saved;
     }
 
     /**
@@ -232,10 +250,27 @@ public class WalletService {
      */
     @Transactional
     public void freezeWallet(Long walletId) {
+        freezeWallet(walletId, "COMPLIANCE", "FRZ-" + walletId,
+                "Your account access is temporarily restricted.",
+                "/api/disputes");
+    }
+
+    @Transactional
+    public void freezeWallet(Long walletId, String reasonCategory, String caseId,
+                             String customerVisibleReason, String appealUrl) {
         Wallet wallet = walletRepository.findByIdForUpdate(walletId)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found"));
         wallet.setStatus(com.mycompany.transfersystem.entity.enums.WalletStatus.FROZEN);
         walletRepository.save(wallet);
+        if (wallet.getUser() != null) {
+            eventPublisher.publishEvent(new com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents.AccountFrozenEvent(
+                    walletId,
+                    wallet.getUser().getId(),
+                    caseId,
+                    reasonCategory,
+                    customerVisibleReason,
+                    appealUrl));
+        }
     }
 
     /**

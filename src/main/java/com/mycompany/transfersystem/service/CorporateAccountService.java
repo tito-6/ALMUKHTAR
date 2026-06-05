@@ -58,7 +58,7 @@ public class CorporateAccountService {
         User parent = userRepository.findById(parentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Parent user not found"));
         int success = 0, failed = 0;
-        for (PayrollItem item : request.getItems()) {
+        for (PayrollBatchRequest.PayrollItem item : request.getItems()) {
             try {
                 TransferRequest tr = new TransferRequest();
                 tr.setSenderId(parentUserId);

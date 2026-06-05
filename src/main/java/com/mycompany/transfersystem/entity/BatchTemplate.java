@@ -32,13 +32,18 @@ public class BatchTemplate {
     private String description;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "column_mapping", columnDefinition = "jsonb")
+    @Column(name = "column_mapping")
     private Map<String, String> columnMapping;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "sample_rows", columnDefinition = "jsonb")
+    @Column(name = "sample_rows")
     private Map<String, Object> sampleRows;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    private void prePersist() {
+        if (this.createdAt == null) this.createdAt = Instant.now();
+    }
 }

@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.wallet.TopupRequestDto;
 import com.mycompany.transfersystem.entity.TopupRequest;
 import com.mycompany.transfersystem.entity.User;
@@ -35,6 +36,7 @@ public class WalletTopUpController {
     }
 
     @PostMapping("/request")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<TopupRequest> requestTopUp(
             @Valid @RequestBody TopupRequestDto request,
@@ -47,6 +49,7 @@ public class WalletTopUpController {
     }
 
     @PutMapping("/{id}/complete")
+    @RequireIdempotencyKey
     @PreAuthorize("hasAnyRole('PLATFORM_OWNER','SUPER_ADMIN','MOTHER_BRANCH_ADMIN','BRANCH_MANAGER','CASHIER')")
     public ResponseEntity<TopupRequest> completeTopUp(
             @PathVariable Long id,

@@ -25,6 +25,24 @@ public class SyncQueue {
     @Column(name = "device_id", nullable = false, length = 128)
     private String deviceId;
 
+    /** Explicit cashier device identifier (may mirror device_id). */
+    @Column(name = "cashier_device_id", length = 128)
+    private String cashierDeviceId;
+
+    @Column(name = "device_sequence_number")
+    private Long deviceSequenceNumber;
+
+    /** Canonical signed hash of decrypted payload (HMAC input). */
+    @Column(name = "signed_payload_hash", length = 64)
+    private String signedPayloadHash;
+
+    @Column(name = "device_signature", length = 512)
+    private String deviceSignature;
+
+    /** When status is CONFLICT, records resolution lifecycle for managers. */
+    @Column(name = "conflict_status", length = 40)
+    private String conflictStatus;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cashier_id", nullable = false)
     private User cashier;
@@ -34,6 +52,9 @@ public class SyncQueue {
 
     @Column(name = "payload_checksum", nullable = false, length = 64)
     private String payloadChecksum;
+
+    @Column(name = "idempotency_key", nullable = false, length = 128)
+    private String idempotencyKey;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

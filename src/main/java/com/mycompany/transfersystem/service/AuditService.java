@@ -62,7 +62,7 @@ public class AuditService {
             // In a real system, you'd check the user's managed branch ID
             // For now, we'll implement a simple check based on branch ID
             if (!isBranchManagerAuthorized(branchId, auth.getName())) {
-                throw new RuntimeException("Access denied: Branch manager can only access their own branch");
+                throw new com.mycompany.transfersystem.exception.ConditionNotMetException("Access denied: Branch manager can only access their own branch");
             }
         }
         

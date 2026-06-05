@@ -5,7 +5,7 @@ import com.mycompany.transfersystem.dto.AiChatResponse;
 import com.mycompany.transfersystem.service.ai.AlmukhtarAiService;
 import com.mycompany.transfersystem.util.SecurityUtils;
 import jakarta.validation.Valid;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/ai")
 @CrossOrigin(origins = "*")
-@ConditionalOnBean(AlmukhtarAiService.class)
+@ConditionalOnProperty(name = "almukhtar.ai.enabled", havingValue = "true", matchIfMissing = false)
 public class AiAssistantController {
 
     private final AlmukhtarAiService aiService;

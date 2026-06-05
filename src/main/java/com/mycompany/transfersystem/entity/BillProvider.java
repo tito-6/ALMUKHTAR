@@ -50,5 +50,10 @@ public class BillProvider {
     private BigDecimal processingFeePct = BigDecimal.ZERO;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    private void prePersist() {
+        if (this.createdAt == null) this.createdAt = Instant.now();
+    }
 }

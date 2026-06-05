@@ -12,6 +12,18 @@ import java.time.Instant;
 public class OfflineTransactionRequest {
     @NotBlank
     private String deviceId;
+
+    /** Optional explicit cashier device id; defaults to deviceId when blank. */
+    private String cashierDeviceId;
+
+    /** Monotonic per device for replay protection. */
+    private Long deviceSequenceNumber;
+
+    /** SHA-256 of canonical payload bytes the device signed. */
+    private String signedPayloadHash;
+
+    /** HMAC-SHA256(deviceSecret, signedPayloadHash) hex, when offline.device.hmac-secret is configured. */
+    private String deviceSignature;
     @NotNull
     private Long fundId;
     @NotNull

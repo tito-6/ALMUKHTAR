@@ -6,7 +6,6 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.mycompany.transfersystem.dto.QrGenerationResponse;
 import com.mycompany.transfersystem.entity.QrToken;
 import com.mycompany.transfersystem.entity.Transaction;
 import com.mycompany.transfersystem.entity.User;
@@ -14,6 +13,7 @@ import com.mycompany.transfersystem.entity.enums.TransactionStatus;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
 import com.mycompany.transfersystem.repository.QrTokenRepository;
 import com.mycompany.transfersystem.repository.TransactionRepository;
+import com.mycompany.transfersystem.service.notification.NotificationEventPublisher;
 import com.mycompany.transfersystem.util.QrEncryptionUtil;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -36,20 +36,20 @@ public class BarcodeGenerationService {
     private final AuditService auditService;
     private final TotpService totpService;
     private final QrEncryptionUtil qrEncryptionUtil;
-    private final NotificationService notificationService;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     public BarcodeGenerationService(QrTokenRepository qrTokenRepository,
                                    TransactionRepository transactionRepository,
                                    AuditService auditService,
                                    TotpService totpService,
                                    QrEncryptionUtil qrEncryptionUtil,
-                                   NotificationService notificationService) {
+                                   NotificationEventPublisher notificationEventPublisher) {
         this.qrTokenRepository = qrTokenRepository;
         this.transactionRepository = transactionRepository;
         this.auditService = auditService;
         this.totpService = totpService;
         this.qrEncryptionUtil = qrEncryptionUtil;
-        this.notificationService = notificationService;
+        this.notificationEventPublisher = notificationEventPublisher;
     }
 
     @Transactional
@@ -94,9 +94,7 @@ public class BarcodeGenerationService {
                 .expiresAt(expiresAt)
                 .transactionId(transactionId)
                 .build();
-        if (notificationService != null) {
-            notificationService.notifyQrReady(tx, response);
-        }
+        notificationEventPublisher.publishQrReleaseCodeCreated(transactionId, expiresAt);
         return response;
     }
 
@@ -108,7 +106,7 @@ public class BarcodeGenerationService {
             MatrixToImageWriter.writeToStream(bitMatrix, "PNG", baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
         } catch (WriterException | IOException e) {
-            throw new RuntimeException("QR encoding failed", e);
+            throw new com.mycompany.transfersystem.exception.ConditionNotMetException("QR encoding failed: " + e.getMessage());
         }
     }
 

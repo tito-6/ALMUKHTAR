@@ -4,12 +4,14 @@ import com.mycompany.transfersystem.entity.BatchJob;
 import com.mycompany.transfersystem.entity.BatchJobRow;
 import com.mycompany.transfersystem.entity.WalletTransaction;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
 import com.mycompany.transfersystem.repository.BatchJobRepository;
 import com.mycompany.transfersystem.repository.BatchJobRowRepository;
 import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.wallet.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -30,22 +32,26 @@ public class BatchExecutionService {
     private final WalletService walletService;
     private final BatchProgressService batchProgressService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public BatchExecutionService(BatchJobRepository batchJobRepository,
                                  BatchJobRowRepository batchJobRowRepository,
                                  BatchValidationService batchValidationService,
                                  WalletService walletService,
                                  BatchProgressService batchProgressService,
-                                 AuditService auditService) {
+                                 AuditService auditService,
+                                 ApplicationEventPublisher applicationEventPublisher) {
         this.batchJobRepository = batchJobRepository;
         this.batchJobRowRepository = batchJobRowRepository;
         this.batchValidationService = batchValidationService;
         this.walletService = walletService;
         this.batchProgressService = batchProgressService;
         this.auditService = auditService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Async("batchExecutor")
+    @Transactional
     public void executeBatch(Long batchJobId) {
         BatchJob job = batchJobRepository.findById(batchJobId)
                 .orElseThrow(() -> new ResourceNotFoundException("Batch job not found"));
@@ -81,6 +87,11 @@ public class BatchExecutionService {
         job.setStatus("COMPLETED");
         job.setCompletedAt(Instant.now());
         batchJobRepository.save(job);
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BatchJobCompletedEvent(
+                job.getId(),
+                job.getSubmittedBy() != null ? job.getSubmittedBy().getId() : null,
+                job.getSuccessCount(),
+                job.getFailedCount()));
         batchProgressService.complete(batchJobId);
         auditService.log("BATCH_JOB_COMPLETED", "BATCH_JOB", job.getId(),
                 "success=" + job.getSuccessCount() + " failed=" + job.getFailedCount(), job.getSubmittedBy());

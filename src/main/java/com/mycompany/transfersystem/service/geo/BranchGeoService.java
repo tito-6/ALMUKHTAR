@@ -28,10 +28,8 @@ public class BranchGeoService {
     }
 
     public List<NearbyBranchResponse> findNearest(NearbyBranchRequest request) {
-        BigDecimal radiusKm = request.getRadiusKm() != null ? request.getRadiusKm() : BigDecimal.TEN;
-        if (radiusKm.compareTo(MAX_RADIUS_KM) > 0) {
-            radiusKm = MAX_RADIUS_KM;
-        }
+        BigDecimal rawRadius = request.getRadiusKm() != null ? request.getRadiusKm() : BigDecimal.TEN;
+        final BigDecimal radiusKm = rawRadius.compareTo(MAX_RADIUS_KM) > 0 ? MAX_RADIUS_KM : rawRadius;
         double userLat = request.getUserLat().doubleValue();
         double userLng = request.getUserLng().doubleValue();
 

@@ -59,7 +59,8 @@ public class AuditServiceTest {
             fundRepository,
             branchRepository,
             commissionRateRepository,
-            auditLogRepository
+            auditLogRepository,
+            userRepository
         );
 
         // Create test data

@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.lending.*;
 import com.mycompany.transfersystem.entity.*;
 import com.mycompany.transfersystem.repository.UserRepository;
@@ -124,6 +125,7 @@ public class LoanController {
     }
 
     @PostMapping("/my-loans/{id}/repay")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> repay(@PathVariable Long id,
                                       @Valid @RequestBody ManualRepaymentRequest request,

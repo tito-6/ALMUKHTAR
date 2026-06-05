@@ -54,6 +54,17 @@ public class GamificationService {
         trustScoreRepository.findAll().forEach(this::recalculateScore);
     }
 
+    /**
+     * Recalculate trust score and badges for a user if a {@link TrustScore} row exists.
+     */
+    @Transactional
+    public void refreshTrustScoreForUser(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        trustScoreRepository.findByUser_Id(userId).ifPresent(this::recalculateScore);
+    }
+
     @Transactional
     public void recalculateScore(TrustScore trustScore) {
         Long userId = trustScore.getUser().getId();

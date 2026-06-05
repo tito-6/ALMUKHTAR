@@ -29,7 +29,7 @@ public class AmlAlert {
     private Long ruleId;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "triggered_transactions", columnDefinition = "jsonb")
+    @Column(name = "triggered_transactions")
     private List<Long> triggeredTransactions;
 
     @Column(nullable = false, length = 20)
@@ -45,8 +45,13 @@ public class AmlAlert {
     private String notes;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
 
     @Column(name = "resolved_at")
     private Instant resolvedAt;
+
+    @PrePersist
+    private void prePersist() {
+        if (this.createdAt == null) this.createdAt = Instant.now();
+    }
 }

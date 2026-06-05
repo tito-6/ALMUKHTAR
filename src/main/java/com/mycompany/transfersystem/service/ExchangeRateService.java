@@ -125,7 +125,7 @@ public class ExchangeRateService {
             String response = restTemplate.getForObject(apiUrl, String.class);
             
             if (response == null) {
-                throw new RuntimeException("Empty response from ExchangeRate-API.com");
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("Empty response from ExchangeRate-API.com");
             }
             
             // Parse JSON response
@@ -134,19 +134,19 @@ public class ExchangeRateService {
             // Check if the API call was successful
             String result = jsonNode.get("result").asText();
             if (!"success".equals(result)) {
-                throw new RuntimeException("API call failed: " + result);
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("API call failed: " + result);
             }
             
             // Get the conversion rates
             JsonNode conversionRates = jsonNode.get("conversion_rates");
             if (conversionRates == null) {
-                throw new RuntimeException("No conversion rates found in response");
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("No conversion rates found in response");
             }
             
             // Get the specific rate for the target currency
             JsonNode targetRate = conversionRates.get(toCurrency);
             if (targetRate == null) {
-                throw new RuntimeException("Rate not found for currency: " + toCurrency);
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("Rate not found for currency: " + toCurrency);
             }
             
             // Convert to BigDecimal with proper precision
@@ -171,7 +171,7 @@ public class ExchangeRateService {
             String response = restTemplate.getForObject(apiUrl, String.class);
             
             if (response == null) {
-                throw new RuntimeException("Empty response from ExchangeRate-API.com");
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("Empty response from ExchangeRate-API.com");
             }
             
             // Parse and validate response
@@ -179,7 +179,7 @@ public class ExchangeRateService {
             String result = jsonNode.get("result").asText();
             
             if (!"success".equals(result)) {
-                throw new RuntimeException("API call failed: " + result);
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("API call failed: " + result);
             }
             
             return response;
@@ -200,14 +200,14 @@ public class ExchangeRateService {
             String response = restTemplate.getForObject(apiUrl, String.class);
             
             if (response == null) {
-                throw new RuntimeException("Empty response from ExchangeRate-API.com");
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("Empty response from ExchangeRate-API.com");
             }
             
             JsonNode jsonNode = objectMapper.readTree(response);
             String result = jsonNode.get("result").asText();
             
             if (!"success".equals(result)) {
-                throw new RuntimeException("API call failed: " + result);
+                throw new com.mycompany.transfersystem.exception.MarketDataUnavailableException("API call failed: " + result);
             }
             
             // Extract metadata

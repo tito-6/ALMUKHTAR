@@ -8,4 +8,6 @@ import java.util.List;
 public interface AmlAlertRepository extends JpaRepository<AmlAlert, Long> {
 
     List<AmlAlert> findByStatus(String status);
+
+    List<AmlAlert> findTop30ByStatusAndSeverityOrderByCreatedAtDesc(String status, String severity);
 }

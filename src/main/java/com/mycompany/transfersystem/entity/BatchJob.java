@@ -59,8 +59,13 @@ public class BatchJob {
     private Wallet sourceWallet;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @PrePersist
+    private void prePersist() {
+        if (this.createdAt == null) this.createdAt = Instant.now();
+    }
 }

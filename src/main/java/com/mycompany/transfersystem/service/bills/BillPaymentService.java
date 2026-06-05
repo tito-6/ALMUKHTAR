@@ -6,11 +6,13 @@ import com.mycompany.transfersystem.entity.User;
 import com.mycompany.transfersystem.entity.Wallet;
 import com.mycompany.transfersystem.entity.enums.WalletTransactionType;
 import com.mycompany.transfersystem.exception.ResourceNotFoundException;
+import com.mycompany.transfersystem.event.financial.FinancialWorkflowEvents;
 import com.mycompany.transfersystem.repository.BillPaymentRequestRepository;
 import com.mycompany.transfersystem.repository.WalletRepository;
 import com.mycompany.transfersystem.service.AuditService;
 import com.mycompany.transfersystem.service.revenue.PlatformRevenueService;
 import com.mycompany.transfersystem.service.wallet.WalletService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,19 +30,22 @@ public class BillPaymentService {
     private final WalletRepository walletRepository;
     private final PlatformRevenueService platformRevenueService;
     private final AuditService auditService;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public BillPaymentService(BillPaymentRequestRepository requestRepository,
                               BillProviderService billProviderService,
                               WalletService walletService,
                               WalletRepository walletRepository,
                               PlatformRevenueService platformRevenueService,
-                              AuditService auditService) {
+                              AuditService auditService,
+                              ApplicationEventPublisher applicationEventPublisher) {
         this.requestRepository = requestRepository;
         this.billProviderService = billProviderService;
         this.walletService = walletService;
         this.walletRepository = walletRepository;
         this.platformRevenueService = platformRevenueService;
         this.auditService = auditService;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional
@@ -71,7 +76,12 @@ public class BillPaymentService {
                     .paymentRef("API-" + System.currentTimeMillis())
                     .build();
             req = requestRepository.save(req);
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BillPaymentCreatedEvent(
+                    req.getId(), actor.getId(), provider.getId(), provider.getName(), false,
+                    amount, currency, platformFee));
             auditService.log("BILL_PAYMENT_COMPLETED", "BILL_PAYMENT_REQUEST", req.getId(), "amount=" + amount, actor);
+            applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BillPaymentCompletedEvent(
+                    req.getId(), actor.getId(), "PAID", amount, currency, req.getPaymentRef()));
             return req;
         }
 
@@ -85,6 +95,9 @@ public class BillPaymentService {
                 .platformFee(platformFee)
                 .build();
         req = requestRepository.save(req);
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BillPaymentCreatedEvent(
+                req.getId(), actor.getId(), provider.getId(), provider.getName(), true,
+                amount, currency, platformFee));
         walletService.debit(wallet.getId(), currency, totalDebit,
                 WalletTransactionType.BILL_PAYMENT, "BILL-PENDING-" + req.getId(), "Bill payment (processing): " + provider.getName());
         auditService.log("BILL_PAYMENT_SUBMITTED", "BILL_PAYMENT_REQUEST", req.getId(), "amount=" + amount + " manual flow", actor);
@@ -106,6 +119,8 @@ public class BillPaymentService {
             platformRevenueService.collect("BILL_PAYMENT_FEE", req.getPlatformFee(), req.getCurrency(), req.getProvider().getId(), "BILL_PROVIDER");
         }
         auditService.log("BILL_PAYMENT_COMPLETED", "BILL_PAYMENT_REQUEST", req.getId(), "Completed by cashier", cashier);
+        applicationEventPublisher.publishEvent(new FinancialWorkflowEvents.BillPaymentCompletedEvent(
+                req.getId(), req.getUser().getId(), "PAID", req.getAmount(), req.getCurrency(), req.getPaymentRef()));
         return req;
     }
 

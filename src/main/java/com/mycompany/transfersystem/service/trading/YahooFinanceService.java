@@ -20,28 +20,57 @@ public class YahooFinanceService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     public Optional<BigDecimal> getQuote(String symbol) {
+        return getQuoteDetails(symbol).map(MarketQuote::price);
+    }
+
+    public Optional<MarketQuote> getQuoteDetails(String symbol) {
         try {
             String url = String.format(CHART_URL, symbol);
             String json = restTemplate.getForObject(url, String.class);
             if (json == null) return Optional.empty();
-            return parsePriceFromChartJson(json);
+            return parseFromChartJson(json);
         } catch (Exception e) {
             log.warn("Yahoo Finance quote failed for {}: {}", symbol, e.getMessage());
             return Optional.empty();
         }
     }
 
-    private Optional<BigDecimal> parsePriceFromChartJson(String json) {
+    private Optional<MarketQuote> parseFromChartJson(String json) {
         try {
-            int metaIdx = json.indexOf("\"regularMarketPrice\":");
-            if (metaIdx < 0) return Optional.empty();
-            int start = metaIdx + "\"regularMarketPrice\":".length();
-            int end = json.indexOf(",", start);
-            if (end < 0) end = json.indexOf("}", start);
-            String value = json.substring(start, end).trim();
-            return Optional.of(new BigDecimal(value));
+            Optional<BigDecimal> price = extractNumber(json, "\"regularMarketPrice\":");
+            if (price.isEmpty()) return Optional.empty();
+            Optional<Long> vol = extractLong(json, "\"regularMarketVolume\":");
+            return Optional.of(new MarketQuote(price.get(), vol.orElse(null)));
         } catch (Exception e) {
             return Optional.empty();
         }
     }
+
+    private Optional<BigDecimal> extractNumber(String json, String key) {
+        int metaIdx = json.indexOf(key);
+        if (metaIdx < 0) return Optional.empty();
+        int start = metaIdx + key.length();
+        int end = json.indexOf(",", start);
+        if (end < 0) end = json.indexOf("}", start);
+        String value = json.substring(start, end).trim();
+        if ("null".equalsIgnoreCase(value)) return Optional.empty();
+        return Optional.of(new BigDecimal(value));
+    }
+
+    private Optional<Long> extractLong(String json, String key) {
+        int metaIdx = json.indexOf(key);
+        if (metaIdx < 0) return Optional.empty();
+        int start = metaIdx + key.length();
+        int end = json.indexOf(",", start);
+        if (end < 0) end = json.indexOf("}", start);
+        String value = json.substring(start, end).trim();
+        if ("null".equalsIgnoreCase(value)) return Optional.empty();
+        try {
+            return Optional.of(Long.parseLong(value.split("\\.")[0]));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    public record MarketQuote(BigDecimal price, Long volume) {}
 }

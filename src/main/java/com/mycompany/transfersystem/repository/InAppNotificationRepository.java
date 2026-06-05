@@ -4,10 +4,9 @@ import com.mycompany.transfersystem.entity.InAppNotification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
 
 public interface InAppNotificationRepository extends JpaRepository<InAppNotification, Long> {
-
-    Page<InAppNotification> findByUser_IdOrderByCreatedAtDesc(Long userId, Pageable pageable);
-
-    long countByUser_IdAndIsReadFalse(Long userId);
+    List<InAppNotification> findByUserIdAndDeliveryStatus(Long userId, InAppNotification.DeliveryStatus status);
+    Page<InAppNotification> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 }

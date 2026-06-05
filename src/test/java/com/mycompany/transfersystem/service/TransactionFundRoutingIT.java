@@ -109,7 +109,7 @@ public class TransactionFundRoutingIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("1000.00"));
         request.setSourceCurrency("USD");
         request.setDestinationCurrency("USD");
@@ -128,7 +128,7 @@ public class TransactionFundRoutingIT {
         // Verify transaction record
         assertThat(result.getGrossAmount()).isEqualByComparingTo("1000.00");
         assertThat(result.getTotalFees()).isEqualByComparingTo("7.00"); // $1.50 + $1.50 + $4.00
-        assertThat(result.getNetAmount()).isEqualByComparingTo("993.00"); // $1000 - $7
+        assertThat(result.getNetAmount()).isEqualByComparingTo("1000.00"); // receiver gets clean principal
         assertThat(result.getPlatformExchangeProfit()).isEqualByComparingTo("0.00"); // No exchange profit for USD->USD
 
         // Refresh fund balances from database
@@ -138,8 +138,8 @@ public class TransactionFundRoutingIT {
         branchBFund = fundRepository.findById(branchBFund.getId()).orElseThrow();
 
         // Verify fund balance changes
-        // Sender Fund: -$1007.00 (gross amount + total fees)
-        BigDecimal expectedSenderFundChange = new BigDecimal("-1007.00");
+        // Sender client fund is not the settlement account for this comprehensive transfer.
+        BigDecimal expectedSenderFundChange = BigDecimal.ZERO;
         BigDecimal actualSenderFundChange = senderFund.getBalance().subtract(initialSenderFundBalance);
         assertThat(actualSenderFundChange).isEqualByComparingTo(expectedSenderFundChange);
 
@@ -148,13 +148,13 @@ public class TransactionFundRoutingIT {
         BigDecimal actualPlatformFundChange = platformFund.getBalance().subtract(initialPlatformFundBalance);
         assertThat(actualPlatformFundChange).isEqualByComparingTo(expectedPlatformFundChange);
 
-        // Branch A Fund: -$994.50 (-$1.50 sending fee - $993.00 principal debt)
-        BigDecimal expectedBranchAFundChange = new BigDecimal("-994.50");
+        // Branch A/source fund pays principal plus all fees.
+        BigDecimal expectedBranchAFundChange = new BigDecimal("-1007.00");
         BigDecimal actualBranchAFundChange = branchAFund.getBalance().subtract(initialBranchAFundBalance);
         assertThat(actualBranchAFundChange).isEqualByComparingTo(expectedBranchAFundChange);
 
-        // Branch B Fund: +$997.00 (+$4.00 receiving fee + $993.00 principal credit)
-        BigDecimal expectedBranchBFundChange = new BigDecimal("997.00");
+        // Branch B receives full clean payout principal.
+        BigDecimal expectedBranchBFundChange = new BigDecimal("1000.00");
         BigDecimal actualBranchBFundChange = branchBFund.getBalance().subtract(initialBranchBFundBalance);
         assertThat(actualBranchBFundChange).isEqualByComparingTo(expectedBranchBFundChange);
     }
@@ -167,7 +167,7 @@ public class TransactionFundRoutingIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("41450.00")); // 41,450 TL
         request.setSourceCurrency("TL");
         request.setDestinationCurrency("USD");
@@ -185,9 +185,10 @@ public class TransactionFundRoutingIT {
 
         // Verify transaction record
         assertThat(result.getGrossAmount()).isEqualByComparingTo("41450.00");
-        assertThat(result.getTotalFees()).isEqualByComparingTo("8.50"); // $1.50 + $1.50 + $1.50 + $4.00
-        assertThat(result.getNetAmount()).isEqualByComparingTo("991.50"); // $1000 - $8.50
-        assertThat(result.getPlatformExchangeProfit()).isEqualByComparingTo("1.50"); // Exchange profit applied for TL->USD
+        assertThat(result.getUsdEquivalent()).isEqualByComparingTo("1367.85");
+        assertThat(result.getTotalFees()).isEqualByComparingTo("17.00"); // 2 units * ($1.50 + $1.50 + $1.50 + $4.00)
+        assertThat(result.getNetAmount()).isEqualByComparingTo("1367.85");
+        assertThat(result.getPlatformExchangeProfit()).isEqualByComparingTo("3.00"); // Exchange profit applied for TL->USD
 
         // Refresh fund balances from database
         senderFund = fundRepository.findById(senderFund.getId()).orElseThrow();
@@ -196,23 +197,20 @@ public class TransactionFundRoutingIT {
         branchBFund = fundRepository.findById(branchBFund.getId()).orElseThrow();
 
         // Verify fund balance changes
-        // Sender Fund: -$41458.50 (gross amount + total fees)
-        BigDecimal expectedSenderFundChange = new BigDecimal("-41458.50");
+        BigDecimal expectedSenderFundChange = BigDecimal.ZERO;
         BigDecimal actualSenderFundChange = senderFund.getBalance().subtract(initialSenderFundBalance);
         assertThat(actualSenderFundChange).isEqualByComparingTo(expectedSenderFundChange);
 
-        // Platform Fund: +$3.00 ($1.50 Platform Base Fee + $1.50 Exchange Profit)
-        BigDecimal expectedPlatformFundChange = new BigDecimal("3.00");
+        // Platform Fund: +$6.00 ($3.00 Platform Base Fee + $3.00 Exchange Profit)
+        BigDecimal expectedPlatformFundChange = new BigDecimal("6.00");
         BigDecimal actualPlatformFundChange = platformFund.getBalance().subtract(initialPlatformFundBalance);
         assertThat(actualPlatformFundChange).isEqualByComparingTo(expectedPlatformFundChange);
 
-        // Branch A Fund: -$993.00 (-$1.50 sending fee - $991.50 principal debt)
-        BigDecimal expectedBranchAFundChange = new BigDecimal("-993.00");
+        BigDecimal expectedBranchAFundChange = new BigDecimal("-1384.85");
         BigDecimal actualBranchAFundChange = branchAFund.getBalance().subtract(initialBranchAFundBalance);
         assertThat(actualBranchAFundChange).isEqualByComparingTo(expectedBranchAFundChange);
 
-        // Branch B Fund: +$995.50 (+$4.00 receiving fee + $991.50 principal credit)
-        BigDecimal expectedBranchBFundChange = new BigDecimal("995.50");
+        BigDecimal expectedBranchBFundChange = new BigDecimal("1367.85");
         BigDecimal actualBranchBFundChange = branchBFund.getBalance().subtract(initialBranchBFundBalance);
         assertThat(actualBranchBFundChange).isEqualByComparingTo(expectedBranchBFundChange);
     }
@@ -224,7 +222,7 @@ public class TransactionFundRoutingIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("5000.00"));
         request.setSourceCurrency("USD");
         request.setDestinationCurrency("EUR");
@@ -243,7 +241,7 @@ public class TransactionFundRoutingIT {
         // Verify transaction record
         assertThat(result.getGrossAmount()).isEqualByComparingTo("5000.00");
         assertThat(result.getTotalFees()).isEqualByComparingTo("42.50"); // 5 * ($1.50 + $1.50 + $1.50 + $4.00)
-        assertThat(result.getNetAmount()).isEqualByComparingTo("4957.50"); // $5000 - $42.50
+        assertThat(result.getNetAmount()).isEqualByComparingTo("5000.00"); // clean principal
         assertThat(result.getPlatformExchangeProfit()).isEqualByComparingTo("7.50"); // 5 * $1.50 (USD ≠ EUR)
 
         // Refresh fund balances from database
@@ -253,8 +251,7 @@ public class TransactionFundRoutingIT {
         branchBFund = fundRepository.findById(branchBFund.getId()).orElseThrow();
 
         // Verify fund balance changes
-        // Sender Fund: -$5042.50 (gross amount + total fees)
-        BigDecimal expectedSenderFundChange = new BigDecimal("-5042.50");
+        BigDecimal expectedSenderFundChange = BigDecimal.ZERO;
         BigDecimal actualSenderFundChange = senderFund.getBalance().subtract(initialSenderFundBalance);
         assertThat(actualSenderFundChange).isEqualByComparingTo(expectedSenderFundChange);
 
@@ -263,13 +260,11 @@ public class TransactionFundRoutingIT {
         BigDecimal actualPlatformFundChange = platformFund.getBalance().subtract(initialPlatformFundBalance);
         assertThat(actualPlatformFundChange).isEqualByComparingTo(expectedPlatformFundChange);
 
-        // Branch A Fund: -$4965.00 (-5 * $1.50 sending fee - $4957.50 principal debt)
-        BigDecimal expectedBranchAFundChange = new BigDecimal("-4965.00");
+        BigDecimal expectedBranchAFundChange = new BigDecimal("-5042.50");
         BigDecimal actualBranchAFundChange = branchAFund.getBalance().subtract(initialBranchAFundBalance);
         assertThat(actualBranchAFundChange).isEqualByComparingTo(expectedBranchAFundChange);
 
-        // Branch B Fund: +$4957.50 (+5 * $4.00 receiving fee + $4957.50 principal credit)
-        BigDecimal expectedBranchBFundChange = new BigDecimal("4957.50");
+        BigDecimal expectedBranchBFundChange = new BigDecimal("5000.00");
         BigDecimal actualBranchBFundChange = branchBFund.getBalance().subtract(initialBranchBFundBalance);
         assertThat(actualBranchBFundChange).isEqualByComparingTo(expectedBranchBFundChange);
     }

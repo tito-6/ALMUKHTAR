@@ -134,7 +134,7 @@ public class FullCycleTransactionIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("1000.00"));
         request.setSourceCurrency("USD");
         request.setDestinationCurrency("EUR");
@@ -150,7 +150,7 @@ public class FullCycleTransactionIT {
         TransactionRecordDTO result = transactionService.executeTransfer(request);
 
         // Step 2: Verify Transaction Status and Basic Information
-        assertThat(result.getStatus()).isEqualTo(TransactionStatus.COMPLETED);
+        assertThat(result.getStatus()).isEqualTo(TransactionStatus.READY_FOR_PICKUP);
         assertThat(result.getGrossAmount()).isEqualByComparingTo("1000.00");
         assertThat(result.getSourceCurrency()).isEqualTo("USD");
         assertThat(result.getDestinationCurrency()).isEqualTo("EUR");
@@ -168,6 +168,7 @@ public class FullCycleTransactionIT {
                 message.contains("Sender Branch: " + branchA.getName()) &&
                 message.contains("Receiver: " + receiver.getUsername()) &&
                 message.contains("Amount: 1000.00") &&
+                message.contains("READY_FOR_PICKUP") &&
                 !message.contains(result.getReleasePasscode()) // NO PASSCODE in branch alert
             )
         );
@@ -175,7 +176,7 @@ public class FullCycleTransactionIT {
         // Verify NotificationService.sendEmail was called once for the Sender Client
         verify(notificationService, times(1)).sendEmail(
             eq(sender),
-            eq("Money Transfer Processed"),
+            eq("Money transfer initiated — ready for receiver pickup"),
             argThat(message -> 
                 message.contains("Transaction ID: " + result.getId()) &&
                 message.contains("Release Passcode: " + result.getReleasePasscode())
@@ -192,7 +193,7 @@ public class FullCycleTransactionIT {
         );
 
         // Step 4: Verify Passcode Security - Branch B cannot see the passcode
-        TransactionRecordDTO branchBView = transactionService.getTransactionRecordById(result.getId(), branchB.getId());
+        TransactionRecordDTO branchBView = transactionService.getTransactionRecordForActor(result.getId(), receiver);
         assertThat(branchBView.getReleasePasscode()).isNull(); // Branch B cannot see passcode
 
         // Step 5: Verify Fund Accounting (Inter-Branch Debt)
@@ -204,23 +205,23 @@ public class FullCycleTransactionIT {
         // Calculate expected changes based on fee structure
         // Total fees: $1.50 (platform base) + $1.50 (exchange profit) + $1.50 (sending) + $4.00 (receiving) = $8.50
         BigDecimal totalFees = new BigDecimal("8.50");
-        BigDecimal netPrincipal = new BigDecimal("1000.00").subtract(totalFees); // $991.50
+        BigDecimal netPrincipal = new BigDecimal("1000.00"); // sender pays fees separately; receiver gets clean principal
         
         // Verify the calculated net principal matches the transaction record
         assertThat(result.getNetAmount()).isEqualByComparingTo(netPrincipal);
 
         // Verify Branch A Fund Balance is correctly debited
-        BigDecimal expectedBranchAChange = new BigDecimal("-990.00"); // -$991.50 (net principal) + $1.50 (sending fee) = -$990.00
+        BigDecimal expectedBranchAChange = new BigDecimal("-1008.50");
         BigDecimal actualBranchAChange = branchAFund.getBalance().subtract(initialBranchAFundBalance);
         assertThat(actualBranchAChange).isEqualByComparingTo(expectedBranchAChange);
 
         // Verify Branch B Fund Balance is correctly credited
-        BigDecimal expectedBranchBChange = new BigDecimal("995.50"); // +$4.00 (receiving fee) + $991.50 (net principal)
+        BigDecimal expectedBranchBChange = new BigDecimal("1000.00");
         BigDecimal actualBranchBChange = branchBFund.getBalance().subtract(initialBranchBFundBalance);
         assertThat(actualBranchBChange).isEqualByComparingTo(expectedBranchBChange);
 
-        // Verify Sender Fund Balance is correctly debited
-        BigDecimal expectedSenderFundChange = new BigDecimal("-1008.50"); // -$1000.00 (gross) - $8.50 (total fees)
+        // Sender personal fund is not the source settlement account in this flow.
+        BigDecimal expectedSenderFundChange = BigDecimal.ZERO;
         BigDecimal actualSenderFundChange = senderFund.getBalance().subtract(initialSenderFundBalance);
         assertThat(actualSenderFundChange).isEqualByComparingTo(expectedSenderFundChange);
 
@@ -230,13 +231,13 @@ public class FullCycleTransactionIT {
         releaseRequest.setReceiverId(receiver.getId());
 
         // Call POST /api/transactions/{transactionId}/release using the correct passcode
-        boolean released = releasePasscodeService.verifyPasscode(result.getId(), releaseRequest.getPasscode(), releaseRequest.getReceiverId());
+        boolean released = releasePasscodeService.verifyPasscode(result.getId(), releaseRequest.getPasscode(), releaseRequest.getReceiverId(), sender);
 
         // Verify the transaction status is updated to RELEASED
         assertThat(released).isTrue();
         
         // Verify the transaction status in database
-        TransactionRecordDTO releasedTransaction = transactionService.getTransactionRecordById(result.getId(), null);
+        TransactionRecordDTO releasedTransaction = transactionService.getTransactionRecordForActor(result.getId(), sender);
         assertThat(releasedTransaction.getStatus()).isEqualTo(TransactionStatus.RELEASED);
 
         // Verify NotificationService.sendEmail was called for the Sender Client with "Released" confirmation
@@ -269,7 +270,7 @@ public class FullCycleTransactionIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("100.00"));
         request.setSourceCurrency("USD");
         request.setDestinationCurrency("USD");
@@ -284,15 +285,15 @@ public class FullCycleTransactionIT {
         releaseRequest.setReceiverId(receiver.getId());
 
         try {
-            releasePasscodeService.verifyPasscode(result.getId(), releaseRequest.getPasscode(), releaseRequest.getReceiverId());
+            releasePasscodeService.verifyPasscode(result.getId(), releaseRequest.getPasscode(), releaseRequest.getReceiverId(), sender);
             assertThat(false).as("Should have thrown exception for invalid passcode").isTrue();
         } catch (Exception e) {
             assertThat(e.getMessage()).contains("Invalid release passcode");
         }
 
         // Verify transaction status remains COMPLETED (not RELEASED)
-        TransactionRecordDTO transaction = transactionService.getTransactionRecordById(result.getId(), null);
-        assertThat(transaction.getStatus()).isEqualTo(TransactionStatus.COMPLETED);
+        TransactionRecordDTO transaction = transactionService.getTransactionRecordForActor(result.getId(), sender);
+        assertThat(transaction.getStatus()).isEqualTo(TransactionStatus.READY_FOR_PICKUP);
     }
 
     @Test
@@ -322,7 +323,7 @@ public class FullCycleTransactionIT {
         TransferTransactionRequest request = new TransferTransactionRequest();
         request.setSenderId(sender.getId());
         request.setReceiverId(receiver.getId());
-        request.setFundId(senderFund.getId());
+        request.setFundId(branchAFund.getId());
         request.setAmount(new BigDecimal("3500.00")); // 3,500 TL
         request.setSourceCurrency("TL");
         request.setDestinationCurrency("USD");
@@ -333,7 +334,7 @@ public class FullCycleTransactionIT {
         TransactionRecordDTO result = transactionService.executeTransfer(request);
         
         // Step 4: Verify transaction execution
-        assertThat(result.getStatus()).isEqualTo(TransactionStatus.COMPLETED);
+        assertThat(result.getStatus()).isEqualTo(TransactionStatus.READY_FOR_PICKUP);
         assertThat(result.getGrossAmount()).isEqualByComparingTo("3500.00");
         assertThat(result.getSourceCurrency()).isEqualTo("TL");
         assertThat(result.getDestinationCurrency()).isEqualTo("USD");
@@ -343,14 +344,10 @@ public class FullCycleTransactionIT {
         assertThat(result.getReleasePasscode()).hasSize(6);
         
         // Step 5: Calculate expected fund changes
-        // Get USD/TL exchange rate (assuming 1 USD = 30 TL for this test)
-        BigDecimal exchangeRate = new BigDecimal("30.00"); // 1 USD = 30 TL
-        BigDecimal usdEquivalent = new BigDecimal("3500.00").divide(exchangeRate, 2, BigDecimal.ROUND_HALF_UP); // 116.67 USD
-        
-        // Calculate fees based on USD equivalent
-        BigDecimal sendingFee = usdEquivalent.multiply(new BigDecimal("0.0015")); // 1.50 per 1000
-        BigDecimal platformFee = usdEquivalent.multiply(new BigDecimal("0.0015")); // 1.50 per 1000  
-        BigDecimal receivingFee = usdEquivalent.multiply(new BigDecimal("0.004")); // 4.00 per 1000
+        BigDecimal usdEquivalent = new BigDecimal("115.50");
+        BigDecimal sendingFee = new BigDecimal("1.50");
+        BigDecimal platformFee = new BigDecimal("3.00");
+        BigDecimal receivingFee = new BigDecimal("4.00");
         
         // Branch A should be debited for: USD equivalent + ALL fees
         BigDecimal totalBranchADebit = usdEquivalent.add(sendingFee).add(platformFee).add(receivingFee);
@@ -387,14 +384,15 @@ public class FullCycleTransactionIT {
         releaseRequest.setReceiverId(receiver.getId());
         
         boolean released = releasePasscodeService.verifyPasscode(
-            result.getId(), 
-            releaseRequest.getPasscode(), 
-            releaseRequest.getReceiverId()
+            result.getId(),
+            releaseRequest.getPasscode(),
+            releaseRequest.getReceiverId(),
+            sender
         );
         
         // Step 11: Verify final transaction status
         assertThat(released).isTrue();
-        TransactionRecordDTO releasedTransaction = transactionService.getTransactionRecordById(result.getId(), null);
+        TransactionRecordDTO releasedTransaction = transactionService.getTransactionRecordForActor(result.getId(), sender);
         assertThat(releasedTransaction.getStatus()).isEqualTo(TransactionStatus.RELEASED);
         
         // Step 12: Report Final Results

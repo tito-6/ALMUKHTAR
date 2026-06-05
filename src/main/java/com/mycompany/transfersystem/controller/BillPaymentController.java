@@ -1,5 +1,6 @@
 package com.mycompany.transfersystem.controller;
 
+import com.mycompany.transfersystem.annotation.RequireIdempotencyKey;
 import com.mycompany.transfersystem.dto.bills.PayBillRequest;
 import com.mycompany.transfersystem.entity.BillPaymentRequest;
 import com.mycompany.transfersystem.entity.BillProvider;
@@ -41,6 +42,7 @@ public class BillPaymentController {
     }
 
     @PostMapping("/pay")
+    @RequireIdempotencyKey
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<BillPaymentRequest> payBill(@Valid @RequestBody PayBillRequest request,
                                                        @AuthenticationPrincipal UserDetails userDetails) {
@@ -69,6 +71,7 @@ public class BillPaymentController {
     }
 
     @PutMapping("/admin/{id}/complete")
+    @RequireIdempotencyKey
     @PreAuthorize("hasRole('CASHIER')")
     public ResponseEntity<BillPaymentRequest> completeManual(@PathVariable Long id,
                                                             @AuthenticationPrincipal UserDetails userDetails) {
